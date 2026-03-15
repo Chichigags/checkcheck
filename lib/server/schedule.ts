@@ -1,8 +1,8 @@
 import type { DeliveryTime } from '@/lib/profile'
 
 const DELIVERY_HOUR_BY_SLOT: Record<DeliveryTime, number> = {
-  Morning: 7,
-  Afternoon: 14,
+  Morning: 8,
+  Afternoon: 12,
   Evening: 19,
 }
 

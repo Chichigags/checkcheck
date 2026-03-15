@@ -34,7 +34,7 @@ export interface QuestionConfig {
   shortcutLabel?: string
 }
 
-export const WELCOME_MESSAGE = `Welcome to CheckCheck ✅✅ — your personal daily fortune digest, blending Chinese BaZi and Western astrology into one punchy morning message.
+export const WELCOME_MESSAGE = `Welcome to CheckCheck — your personal daily fortune digest, blending Chinese BaZi and Western astrology into one punchy morning message.
 
 Your readings are fully personalised — so please use your real details. The more accurate, the better your daily CheckCheck. You can always update anything later with /edit.`
 
@@ -47,7 +47,7 @@ export const onboardingQuestions: QuestionConfig[] = [
   },
   {
     id: 'nickname',
-    question: "What should I call you? (first name or nickname)",
+    question: "What's your preferred nickname? This is what I'll use day-to-day.",
     type: 'text',
     placeholder: 'Enter your nickname',
   },
@@ -86,7 +86,7 @@ export const onboardingQuestions: QuestionConfig[] = [
     id: 'deliveryTime',
     question: 'What time should your CheckCheck arrive each day? (Local time)',
     type: 'select',
-    options: ['07:00', '14:00', '19:00'],
+    options: ['8:00 AM', '12:00 PM', '7:00 PM'],
   },
   {
     id: 'dailyInspiration',
@@ -95,7 +95,7 @@ export const onboardingQuestions: QuestionConfig[] = [
 📖 B — Word of the Day (if you're learning a new language)
 🙅 C — No thanks
 
-Reply A, B, both, or C`,
+Reply A, B, or C`,
     type: 'extras',
   },
   {
@@ -109,13 +109,13 @@ Reply A, B, both, or C`,
 export const layer2Questions: QuestionConfig[] = [
   {
     id: 'relationshipStatus',
-    question: "Want more personalised readings? What's your current relationship status?",
+    question: "Great, your core onboarding is complete. Let's do 2 quick personalised questions. (1/2) What's your current relationship status?",
     type: 'select',
     options: ['Single', 'In a relationship', "It's complicated", 'Prefer not to say'],
   },
   {
     id: 'lifeFocus',
-    question: 'What area of life are you most focused on right now?',
+    question: '(2/2) What area of life are you most focused on right now?',
     type: 'select',
     options: ['Career', 'Relationships', 'Health', 'Wealth', 'Personal Growth'],
   },
@@ -126,16 +126,16 @@ export const COMPLETION_MESSAGE = `You're all set! 🎉 Your first CheckCheck ar
 Type /today for today's reading, or /help to see all commands.`
 
 export const DELIVERY_TIME_LABELS: Record<DeliveryTime, string> = {
-  Morning: '07:00',
-  Afternoon: '14:00',
-  Evening: '19:00',
+  Morning: '8:00 AM',
+  Afternoon: '12:00 PM',
+  Evening: '7:00 PM',
 }
 
 export function deliveryLabelToSlot(label: string): DeliveryTime | null {
   const normalized = label.trim().toLowerCase()
-  if (normalized === '07:00' || normalized === '7:00' || normalized === 'morning') return 'Morning'
-  if (normalized === '14:00' || normalized === 'afternoon') return 'Afternoon'
-  if (normalized === '19:00' || normalized === 'evening') return 'Evening'
+  if (normalized === '8:00 am' || normalized === '8am' || normalized === '08:00' || normalized === '8:00' || normalized === 'morning') return 'Morning'
+  if (normalized === '12:00 pm' || normalized === '12pm' || normalized === '12:00' || normalized === 'noon' || normalized === 'afternoon') return 'Afternoon'
+  if (normalized === '7:00 pm' || normalized === '7pm' || normalized === '19:00' || normalized === 'evening') return 'Evening'
   return null
 }
 
