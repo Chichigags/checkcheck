@@ -1,6 +1,6 @@
 import type { DailyMessage } from '@/lib/generate-mock-message'
-import { generateMockMessage } from '@/lib/generate-mock-message'
 import { toUserProfile } from './profile-adapter'
+import { generateDailyMessage } from './generate-daily-message'
 import { getDailyMessage, listDueProfiles, updateProfile, upsertDailyMessage } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
 import { formatDailyMessage } from './telegram-format'
@@ -26,7 +26,7 @@ export async function runDailyDispatch(limit = 200) {
       if (existing?.payload) {
         message = existing.payload as DailyMessage
       } else {
-        message = generateMockMessage(toUserProfile(profile), today)
+        message = await generateDailyMessage(toUserProfile(profile), today)
         await upsertDailyMessage(profile.id, today, message)
       }
 

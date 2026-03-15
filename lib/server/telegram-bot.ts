@@ -1,6 +1,6 @@
 import type { DailyMessage } from '@/lib/generate-mock-message'
-import { generateMockMessage } from '@/lib/generate-mock-message'
 import { layer2Questions, onboardingQuestions, type Language, type QuestionConfig, type UserProfile } from '@/lib/profile'
+import { generateDailyMessage } from './generate-daily-message'
 import { buildProfilePatch, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
   ensureBotState,
@@ -142,7 +142,7 @@ async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMes
   }
 
   const userProfile = toUserProfile(profile)
-  const message = generateMockMessage(userProfile, date)
+  const message = await generateDailyMessage(userProfile, date)
   await upsertDailyMessage(profile.id, date, message)
   return message
 }
