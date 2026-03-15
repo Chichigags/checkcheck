@@ -1,7 +1,17 @@
 import type { DailyMessage } from '@/lib/generate-mock-message'
-import { layer2Questions, onboardingQuestions, type Language, type QuestionConfig, type UserProfile } from '@/lib/profile'
+import {
+  COMPLETION_MESSAGE,
+  WELCOME_MESSAGE,
+  deliveryLabelToSlot,
+  layer2Questions,
+  onboardingQuestions,
+  parseExtrasAnswer,
+  type Language,
+  type QuestionConfig,
+  type UserProfile,
+} from '@/lib/profile'
 import { generateDailyMessage } from './generate-daily-message'
-import { buildProfilePatch, profileFieldToColumn, toUserProfile } from './profile-adapter'
+import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
   deleteDailyMessage,
   ensureBotState,
@@ -32,6 +42,7 @@ const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {
   language: 'languagePreference',
   relationship: 'relationshipStatus',
   focus: 'lifeFocus',
+  inspiration: 'dailyInspiration',
 }
 
 function currentIsoDate(): string {
@@ -68,18 +79,66 @@ function defaultFlowForProfile(profile: ProfileRecord): BotFlow {
   return 'idle'
 }
 
-function normalizeQuestionAnswer(question: QuestionConfig, answer: string, profile: ProfileRecord): { ok: true; value: string } | { ok: false; message: string } {
+function normalizeQuestionAnswer(
+  question: QuestionConfig,
+  answer: string,
+  profile: ProfileRecord
+): { ok: true; value: string } | { ok: false; message: string } {
   const trimmed = answer.trim()
   if (!trimmed) {
     return { ok: false, message: 'Please send a value.' }
   }
 
-  if ((question.type === 'select' || question.type === 'birthTime' || question.type === 'language') && question.options) {
+  if (question.type === 'select' && question.options) {
+    // For delivery time, accept time labels like "07:00" and map to slot names
+    if (question.id === 'deliveryTime') {
+      const slot = deliveryLabelToSlot(trimmed)
+      if (!slot) {
+        return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
+      }
+      return { ok: true, value: slot }
+    }
     const option = pickOption(trimmed, question.options)
     if (!option) {
-      return { ok: false, message: `Please choose one of: ${question.options.join(', ')}` }
+      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
     }
     return { ok: true, value: option }
+  }
+
+  if ((question.type === 'birthTime') && question.options) {
+    // Accept exact time in HH:MM format or approximate options
+    if (/^\d{1,2}:\d{2}$/.test(trimmed)) {
+      return { ok: true, value: trimmed }
+    }
+    const option = pickOption(trimmed, question.options)
+    if (!option) {
+      return { ok: false, message: `Enter exact time (HH:MM) or pick: ${question.options.join(' / ')}` }
+    }
+    return { ok: true, value: option }
+  }
+
+  if (question.type === 'language' && question.options) {
+    const option = pickOption(trimmed, question.options)
+    if (!option) {
+      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
+    }
+    return { ok: true, value: option }
+  }
+
+  if (question.type === 'extras') {
+    const parsed = parseExtrasAnswer(trimmed)
+    if (!parsed.inspiration && !parsed.wantLanguage) {
+      // Could be "C" / "no" — valid
+      if (/^(c|no|none|no thanks)$/i.test(trimmed)) {
+        return { ok: true, value: 'C' }
+      }
+    }
+    if (parsed.inspiration || parsed.wantLanguage) {
+      if (parsed.inspiration && parsed.wantLanguage) return { ok: true, value: 'both' }
+      if (parsed.inspiration) return { ok: true, value: 'A' }
+      return { ok: true, value: 'B' }
+    }
+    return { ok: false, message: 'Please reply A, B, both, or C.' }
   }
 
   if (question.type === 'date') {
@@ -97,7 +156,7 @@ function normalizeQuestionAnswer(question: QuestionConfig, answer: string, profi
   }
 
   if (question.type === 'textWithShortcut') {
-    if (trimmed.toLowerCase() === 'same as birth city') {
+    if (trimmed.toLowerCase() === 'same') {
       const fallback = profile.birth_city?.trim()
       if (!fallback) {
         return { ok: false, message: 'I do not have a birth city yet. Please type your current city.' }
@@ -114,6 +173,18 @@ async function updateProfileFromField(
   field: keyof UserProfile,
   rawValue: string
 ): Promise<{ profile: ProfileRecord; message?: string }> {
+  // Special handling for dailyInspiration toggle
+  if (field === 'dailyInspiration') {
+    const normalized = rawValue.trim().toLowerCase()
+    if (normalized === 'on' || normalized === 'yes' || normalized === 'true') {
+      return { profile: await updateProfile(profile.id, { daily_inspiration: true }) }
+    }
+    if (normalized === 'off' || normalized === 'no' || normalized === 'false') {
+      return { profile: await updateProfile(profile.id, { daily_inspiration: false }) }
+    }
+    return { profile, message: 'Reply "on" or "off".' }
+  }
+
   const questionLookup = [...onboardingQuestions, ...layer2Questions].find((question) => question.id === field)
   const parsed = questionLookup
     ? normalizeQuestionAnswer(questionLookup, rawValue, profile)
@@ -159,7 +230,34 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
     return [parsed.message, formatQuestionPrompt(question, safeStep, questions.length)]
   }
 
+  // Handle extras question (Q9) — sets dailyInspiration and conditionally skips language question
+  if (question.type === 'extras') {
+    const extras = parseExtrasAnswer(text)
+    await updateProfile(profile.id, { daily_inspiration: extras.inspiration })
+
+    if (extras.wantLanguage) {
+      // Proceed to the language question (next step)
+      const nextStep = safeStep + 1
+      await upsertBotState(profile.id, { flow, step: nextStep, awaiting_field: null })
+      return [formatQuestionPrompt(questions[nextStep], nextStep, questions.length)]
+    }
+
+    // No language wanted — set to None and skip language question, finish onboarding
+    await updateProfile(profile.id, { language_preference: 'None' })
+    return await finishOnboarding(profile, flow)
+  }
+
+  // Handle delivery time — store the slot name (Morning/Afternoon/Evening)
   const patch: Partial<ProfileRecord> = buildProfilePatch(question.id, parsed.value)
+
+  // After current city answer, auto-detect timezone
+  if (question.id === 'currentCity') {
+    const detectedTz = inferTimezoneFromCity(parsed.value)
+    if (detectedTz) {
+      patch.timezone = detectedTz
+    }
+  }
+
   const updatedProfile = await updateProfile(profile.id, patch)
 
   const isFinalQuestion = safeStep >= questions.length - 1
@@ -173,9 +271,13 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
     return [formatQuestionPrompt(questions[nextStep], nextStep, questions.length)]
   }
 
+  return await finishOnboarding(updatedProfile, flow)
+}
+
+async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<string[]> {
   if (flow === 'onboarding') {
-    const deliveryTime = normalizeDeliveryTime(updatedProfile.delivery_time)
-    const timeZone = normalizeTimeZone(updatedProfile.timezone)
+    const deliveryTime = normalizeDeliveryTime(profile.delivery_time)
+    const timeZone = normalizeTimeZone(profile.timezone)
     await updateProfile(profile.id, {
       onboarding_complete: true,
       next_delivery_at: computeNextDeliveryAt(timeZone, deliveryTime),
@@ -187,18 +289,20 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
       awaiting_field: null,
     })
     return [
-      "Great, your core onboarding is complete. Let's do 3 quick personalization questions.",
+      COMPLETION_MESSAGE,
+      "But first — 2 quick bonus questions to make your readings even more personal:",
       formatQuestionPrompt(layer2Questions[0], 0, layer2Questions.length),
     ]
   }
 
+  // Layer 2 complete
   await updateProfile(profile.id, { layer2_complete: true })
   await upsertBotState(profile.id, {
     flow: 'idle',
     step: 0,
     awaiting_field: null,
   })
-  return ['Perfect. You are all set. Use /today to get your CheckCheck now.']
+  return ['Perfect, personalisation complete! Your CheckCheck readings will now be even more tailored to you. Use /today to get your reading now.']
 }
 
 async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<string[]> {
@@ -244,16 +348,19 @@ async function handleCommand(
         const step = Math.max(0, Math.min(state.step, onboardingQuestions.length - 1))
         await upsertBotState(profile.id, { flow: 'onboarding', step, awaiting_field: null })
         const question = onboardingQuestions[step]
-        return ['Welcome to CheckCheck. Let us finish onboarding first.', formatQuestionPrompt(question, step, onboardingQuestions.length)]
+        if (step === 0) {
+          return [WELCOME_MESSAGE, formatQuestionPrompt(question, step, onboardingQuestions.length)]
+        }
+        return ['Welcome back! Let\'s continue where we left off.', formatQuestionPrompt(question, step, onboardingQuestions.length)]
       }
 
       if (flow === 'layer2') {
         const step = Math.max(0, Math.min(state.step, layer2Questions.length - 1))
         await upsertBotState(profile.id, { flow: 'layer2', step, awaiting_field: null })
-        return ['Welcome back. Let us finish your extra personalization.', formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
+        return ['Welcome back! Let\'s finish your personalisation.', formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
       }
 
-      return ['Welcome back. Use /today for your daily message, /settings to edit profile, or /help for commands.']
+      return ['Welcome back! Use /today for your daily CheckCheck, /settings to edit profile, or /help for commands.']
     }
 
     case '/help':
@@ -330,6 +437,11 @@ async function handleCommand(
       await upsertBotState(profile.id, {
         awaiting_field: mapped,
       })
+
+      if (mapped === 'dailyInspiration') {
+        return [`Daily Inspiration is currently: ${currentValue ? 'On' : 'Off'}\nReply "on" or "off".`]
+      }
+
       return [`Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`]
     }
 
@@ -421,7 +533,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
   ) {
     await upsertBotState(profile.id, { last_command: '/start' })
     replies = [
-      'Welcome to CheckCheck. Let us start your onboarding.',
+      WELCOME_MESSAGE,
       formatQuestionPrompt(onboardingQuestions[0], 0, onboardingQuestions.length),
     ]
   } else if (state.awaiting_field && !messageText.startsWith('/')) {

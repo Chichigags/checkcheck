@@ -24,6 +24,7 @@ create table if not exists public.profiles (
   delivery_time text check (delivery_time in ('Morning', 'Afternoon', 'Evening')),
   timezone text not null default 'UTC',
   language_preference text not null default 'None',
+  daily_inspiration boolean not null default false,
   relationship_status text,
   life_focus text,
   current_city text,

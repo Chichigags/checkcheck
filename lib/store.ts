@@ -95,7 +95,7 @@ export const useUserStore = create<UserStore>()(
       resetLayer2: () =>
         set((state) => ({
           userProfile: state.userProfile
-            ? { ...state.userProfile, hasCompletedLayer2: false, relationshipStatus: undefined, lifeFocus: undefined, currentCity: undefined }
+            ? { ...state.userProfile, hasCompletedLayer2: false, relationshipStatus: undefined, lifeFocus: undefined }
             : null,
         })),
     }),

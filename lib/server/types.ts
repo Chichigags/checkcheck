@@ -15,6 +15,7 @@ export interface ProfileRecord {
   delivery_time: string | null
   timezone: string
   language_preference: string
+  daily_inspiration: boolean
   relationship_status: string | null
   life_focus: string | null
   current_city: string | null

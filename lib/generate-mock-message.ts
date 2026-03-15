@@ -52,6 +52,7 @@ export interface DailyMessage {
   dailyLuck: string
   watchOut: string
   dailyFun: string
+  dailyInspiration?: string
   dailyWord?: DailyWord
   triggeredModules: TriggeredModule[]
 }
@@ -109,6 +110,14 @@ const dailyFunMessages = [
   "Your vibe today: main character energy with a hint of cozy cat.",
   "Plot twist: You're actually the lucky charm in someone else's day.",
   "Today's mood: like a cinnamon roll — warm, sweet, and universally loved.",
+]
+
+const inspirationQuotes = [
+  '"The only way to do great work is to love what you do." — Steve Jobs',
+  '"In the middle of difficulty lies opportunity." — Albert Einstein',
+  '"What you seek is seeking you." — Rumi',
+  '"Be yourself; everyone else is already taken." — Oscar Wilde',
+  '"The best time to plant a tree was 20 years ago. The second best time is now." — Chinese Proverb',
 ]
 
 const dailyWords: Record<Exclude<Language, 'None'>, { word: string; translation: string; pronunciation?: string }[]> = {
@@ -197,6 +206,13 @@ export function generateMockMessage(profile: UserProfile, customDate?: string): 
   const watchIndex = Math.floor(seededRandom(seed, 2) * watchOutMessages.length)
   const funIndex = Math.floor(seededRandom(seed, 3) * dailyFunMessages.length)
   
+  // Build daily inspiration if enabled
+  let dailyInspiration: string | undefined
+  if (profile.dailyInspiration) {
+    const inspIndex = Math.floor(seededRandom(seed, 20) * inspirationQuotes.length)
+    dailyInspiration = inspirationQuotes[inspIndex]
+  }
+
   // Build daily word if language preference is set
   let dailyWord: DailyWord | undefined
   if (profile.languagePreference && profile.languagePreference !== 'None') {
@@ -249,6 +265,7 @@ export function generateMockMessage(profile: UserProfile, customDate?: string): 
     dailyLuck: dailyLuckMessages[luckIndex],
     watchOut: watchOutMessages[watchIndex],
     dailyFun: dailyFunMessages[funIndex],
+    dailyInspiration,
     dailyWord,
     triggeredModules,
   }

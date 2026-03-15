@@ -3,8 +3,29 @@ import { generateMockMessage } from '@/lib/generate-mock-message'
 import type { UserProfile } from '@/lib/profile'
 import { chatCompletion } from './openrouter'
 
-function buildSystemPrompt(): string {
-  return `You are CheckCheck, a warm and witty daily insights companion. You create personalized daily readings that blend astrology-inspired wisdom, practical advice, and humor.
+function buildSystemPrompt(wantInspiration: boolean, wantWord: boolean): string {
+  const inspirationField = wantInspiration
+    ? `  "dailyInspiration": "A short, meaningful quote or proverb to start the day — can be from any culture, era, or thinker. Keep it to 1-2 sentences max.",\n`
+    : ''
+
+  const wordField = wantWord
+    ? `  "dailyWord": {
+    "language": "the user's chosen language",
+    "word": "a beautiful/useful word in that language",
+    "translation": "english meaning",
+    "pronunciation": "phonetic guide"
+  }\n`
+    : ''
+
+  const inspirationRule = wantInspiration
+    ? '- dailyInspiration: pick a quote that connects to the day\'s theme or the user\'s life focus. Vary sources — mix Eastern philosophy, Western literature, modern thinkers, proverbs.\n'
+    : ''
+
+  const wordRule = wantWord
+    ? '- dailyWord: only include if the user has a language preference that is not "None". Pick a word that connects to the day\'s theme.\n'
+    : ''
+
+  return `You are CheckCheck, a warm and witty daily insights companion. You create personalized daily readings that blend Chinese BaZi wisdom and Western astrology into practical, punchy advice.
 
 Your tone is: friendly, playful, insightful, concise. Like a smart friend who reads horoscopes ironically but still finds wisdom in them.
 
@@ -18,7 +39,7 @@ You MUST respond with valid JSON matching this exact schema:
   "dailyLuck": "1-2 sentences of personalized positive insight for the day",
   "watchOut": "1-2 sentences about something to be mindful of today",
   "dailyFun": "1 sentence that's funny, quirky, or uplifting — like a fortune cookie with personality",
-  "triggeredModules": [
+${inspirationField}  "triggeredModules": [
     {
       "type": "romance|career|conflict|lunar|transit",
       "title": "Short catchy title (2-4 words)",
@@ -27,20 +48,13 @@ You MUST respond with valid JSON matching this exact schema:
       "planet": "only if type is transit — e.g. 'Mercury'"
     }
   ],
-  "dailyWord": {
-    "language": "the user's chosen language",
-    "word": "a beautiful/useful word in that language",
-    "translation": "english meaning",
-    "pronunciation": "phonetic guide"
-  }
-}
+${wordField}}
 
 Rules:
 - triggeredModules: include 1-2 modules. Pick types relevant to the user's life focus and situation.
 - For "lunar" type modules, always include "phase". For "transit" type, always include "planet".
 - For other module types (romance, career, conflict), do NOT include "phase" or "planet".
-- dailyWord: only include if the user has a language preference that is not "None". Pick a word that connects to the day's theme.
-- Make content feel personal using the user's name, life situation, and preferences.
+${inspirationRule}${wordRule}- Make content feel personal using the user's name, life situation, and preferences.
 - Vary the lucky colour creatively — don't repeat common colours.
 - The dailyFun should genuinely make someone smile.
 - Do NOT be generic. Reference specific details from the user's profile.
@@ -60,15 +74,20 @@ function buildUserPrompt(profile: UserProfile, date: string): string {
     `- Timezone: ${profile.timezone}`,
   ]
 
+  if (profile.currentCity) {
+    parts.push(`- Currently living in: ${profile.currentCity}`)
+  }
   if (profile.relationshipStatus) {
     parts.push(`- Relationship: ${profile.relationshipStatus}`)
   }
   if (profile.lifeFocus) {
     parts.push(`- Life focus: ${profile.lifeFocus}`)
   }
-  if (profile.currentCity) {
-    parts.push(`- Currently living in: ${profile.currentCity}`)
+
+  if (profile.dailyInspiration) {
+    parts.push('- Wants daily inspiration quote: Yes')
   }
+
   if (profile.languagePreference && profile.languagePreference !== 'None') {
     parts.push(`- Learning language: ${profile.languagePreference}`)
   } else {
@@ -142,6 +161,9 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
     dailyLuck: String(parsed.dailyLuck ?? ''),
     watchOut: String(parsed.watchOut ?? ''),
     dailyFun: String(parsed.dailyFun ?? ''),
+    dailyInspiration: profile.dailyInspiration && parsed.dailyInspiration
+      ? String(parsed.dailyInspiration)
+      : undefined,
     triggeredModules: parseModules(parsed.triggeredModules as unknown[]),
     dailyWord: hasLanguage ? parseDailyWord(parsed.dailyWord, profile.languagePreference) : undefined,
   }
@@ -149,8 +171,11 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
 
 export async function generateDailyMessage(profile: UserProfile, date: string): Promise<DailyMessage> {
   try {
+    const wantInspiration = profile.dailyInspiration ?? false
+    const wantWord = !!(profile.languagePreference && profile.languagePreference !== 'None')
+
     const response = await chatCompletion([
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: buildSystemPrompt(wantInspiration, wantWord) },
       { role: 'user', content: buildUserPrompt(profile, date) },
     ])
 
