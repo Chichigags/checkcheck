@@ -151,6 +151,18 @@ export async function upsertDailyMessage(profileId: string, date: string, payloa
   return rows[0]
 }
 
+export async function deleteDailyMessage(profileId: string, date: string): Promise<void> {
+  await supabaseRestRequest<null>({
+    method: 'DELETE',
+    path: tablePath('daily_messages'),
+    query: {
+      profile_id: `eq.${profileId}`,
+      message_date: `eq.${date}`,
+    },
+    prefer: 'return=minimal',
+  })
+}
+
 export async function getRecentDailyMessages(profileId: string, limit = 7): Promise<DailyMessageRecord[]> {
   return supabaseRestRequest<DailyMessageRecord[]>({
     method: 'GET',

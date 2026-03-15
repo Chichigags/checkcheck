@@ -6,6 +6,7 @@ export const COMMAND_HELP = [
   'Available commands:',
   '/start - Begin or continue onboarding',
   '/today - Get today\'s CheckCheck',
+  '/regenerate - Generate a fresh CheckCheck for today',
   '/history - Last 7 daily messages',
   '/settings - View your current profile',
   '/pause [days] - Pause for 1-30 days',

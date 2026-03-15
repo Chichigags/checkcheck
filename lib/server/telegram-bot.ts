@@ -3,6 +3,7 @@ import { layer2Questions, onboardingQuestions, type Language, type QuestionConfi
 import { generateDailyMessage } from './generate-daily-message'
 import { buildProfilePatch, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
+  deleteDailyMessage,
   ensureBotState,
   getDailyMessage,
   getRecentDailyMessages,
@@ -270,6 +271,16 @@ async function handleCommand(
 
       const message = await getOrCreateTodayMessage(profile)
       return [formatDailyMessage(message)]
+    }
+
+    case '/regenerate': {
+      if (!profile.onboarding_complete) {
+        return ['Please finish onboarding first with /start.']
+      }
+      const regenDate = currentIsoDate()
+      await deleteDailyMessage(profile.id, regenDate)
+      const freshMessage = await getOrCreateTodayMessage(profile)
+      return ['Regenerated your daily CheckCheck:', formatDailyMessage(freshMessage)]
     }
 
     case '/history': {
