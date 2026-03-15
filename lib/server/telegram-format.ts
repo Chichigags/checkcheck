@@ -47,9 +47,10 @@ export function formatDailyMessage(message: DailyMessage): string {
   const lines = [
     `✅✅ CheckCheck for ${message.nickname} (${message.date})`,
     '',
-    `🎨 Lucky Colour: ${message.luckyColour.name} (${message.luckyColour.hex})`,
     `🍀 Daily Luck: ${message.dailyLuck}`,
+    '',
     `⚠️ Watch Out: ${message.watchOut}`,
+    '',
     `😄 Daily Fun: ${message.dailyFun}`,
   ]
 
@@ -58,19 +59,17 @@ export function formatDailyMessage(message: DailyMessage): string {
   }
 
   if (message.triggeredModules.length > 0) {
-    lines.push('')
     message.triggeredModules.forEach((module) => {
+      lines.push('')
+      const emoji = MODULE_EMOJI[module.type] ?? '⚡'
       if (module.type === 'lunar') {
-        lines.push(`🌙 ${module.title} [${module.phase}]: ${module.message}`)
+        lines.push(`${emoji} ${module.title} [${module.phase}]`)
       } else if (module.type === 'transit') {
-        lines.push(`🪐 ${module.title} [${module.planet}]: ${module.message}`)
-      } else if (module.type === 'romance') {
-        lines.push(`💕 ${module.title}: ${module.message}`)
-      } else if (module.type === 'career') {
-        lines.push(`💼 ${module.title}: ${module.message}`)
+        lines.push(`${emoji} ${module.title} [${module.planet}]`)
       } else {
-        lines.push(`⚡ ${module.title}: ${module.message}`)
+        lines.push(`${emoji} ${module.title}`)
       }
+      lines.push(module.message)
     })
   }
 
@@ -86,6 +85,14 @@ export function formatDailyMessage(message: DailyMessage): string {
   }
 
   return lines.join('\n')
+}
+
+const MODULE_EMOJI: Record<string, string> = {
+  lunar: '🌙',
+  transit: '🪐',
+  romance: '💕',
+  career: '💼',
+  conflict: '⚡',
 }
 
 export function formatSettings(profile: ProfileRecord): string {

@@ -3,8 +3,7 @@ import { toUserProfile } from './profile-adapter'
 import { generateDailyMessage } from './generate-daily-message'
 import { getDailyMessage, listDueProfiles, updateProfile, upsertDailyMessage } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
-import { formatDailyMessage } from './telegram-format'
-import { sendTelegramMessage } from './telegram-client'
+import { sendDailyCheckCheck } from './telegram-bot'
 
 function currentIsoDate(): string {
   return new Date().toISOString().split('T')[0]
@@ -30,7 +29,7 @@ export async function runDailyDispatch(limit = 200) {
         await upsertDailyMessage(profile.id, today, message)
       }
 
-      await sendTelegramMessage(profile.telegram_user_id, formatDailyMessage(message))
+      await sendDailyCheckCheck(profile.telegram_user_id, message)
       await updateProfile(profile.id, {
         next_delivery_at: computeNextDeliveryAt(
           normalizeTimeZone(profile.timezone),

@@ -11,6 +11,7 @@ import {
   type UserProfile,
 } from '@/lib/profile'
 import { generateDailyMessage } from './generate-daily-message'
+import { generateColorPng } from './color-image'
 import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
   deleteDailyMessage,
@@ -26,8 +27,16 @@ import {
 } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
 import { formatDailyMessage, formatHistory, formatQuestionPrompt, formatSettings, COMMAND_HELP } from './telegram-format'
-import { sendTelegramMessage } from './telegram-client'
+import { sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
 import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './types'
+
+type BotReply = string | { type: 'daily'; message: DailyMessage }
+
+export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
+  const colorPng = generateColorPng(message.luckyColour.hex)
+  await sendTelegramPhoto(chatId, colorPng, `🎨 Lucky Colour: ${message.luckyColour.name}`)
+  await sendTelegramMessage(chatId, formatDailyMessage(message))
+}
 
 const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {
   nickname: 'nickname',
@@ -219,7 +228,7 @@ async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMes
   return message
 }
 
-async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<string[]> {
+async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
   const flow = state.flow === 'layer2' ? 'layer2' : 'onboarding'
   const questions = getQuestions(flow)
   const safeStep = Math.max(0, Math.min(state.step, questions.length - 1))
@@ -274,7 +283,7 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
   return await finishOnboarding(updatedProfile, flow)
 }
 
-async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<string[]> {
+async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<BotReply[]> {
   if (flow === 'onboarding') {
     const deliveryTime = normalizeDeliveryTime(profile.delivery_time)
     const timeZone = normalizeTimeZone(profile.timezone)
@@ -305,7 +314,7 @@ async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<
   return ['Perfect, personalisation complete! Your CheckCheck readings will now be even more tailored to you. Use /today to get your reading now.']
 }
 
-async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<string[]> {
+async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
   const field = state.awaiting_field as keyof UserProfile
   const result = await updateProfileFromField(profile, field, text)
   if (result.message) {
@@ -322,7 +331,7 @@ async function handleCommand(
   profile: ProfileRecord,
   state: BotStateRecord,
   text: string
-): Promise<string[]> {
+): Promise<BotReply[]> {
   const [rawCommand, ...rawArgs] = text.trim().split(/\s+/)
   const command = rawCommand.toLowerCase().split('@')[0]
   const args = rawArgs
@@ -377,7 +386,7 @@ async function handleCommand(
       }
 
       const message = await getOrCreateTodayMessage(profile)
-      return [formatDailyMessage(message)]
+      return [{ type: 'daily', message }]
     }
 
     case '/regenerate': {
@@ -387,7 +396,7 @@ async function handleCommand(
       const regenDate = currentIsoDate()
       await deleteDailyMessage(profile.id, regenDate)
       const freshMessage = await getOrCreateTodayMessage(profile)
-      return ['Regenerated your daily CheckCheck:', formatDailyMessage(freshMessage)]
+      return ['Regenerated your daily CheckCheck:', { type: 'daily', message: freshMessage }]
     }
 
     case '/history': {
@@ -523,7 +532,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     })
   }
 
-  let replies: string[] = []
+  let replies: BotReply[] = []
   if (
     !messageText.startsWith('/') &&
     state.flow === 'onboarding' &&
@@ -546,8 +555,13 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     replies = ['I only respond to commands that start with /. Use /help for available commands.']
   }
 
+  const chatId = update.message.chat.id
   for (const reply of replies) {
-    await sendTelegramMessage(update.message.chat.id, reply)
+    if (typeof reply === 'string') {
+      await sendTelegramMessage(chatId, reply)
+    } else if (reply.type === 'daily') {
+      await sendDailyCheckCheck(chatId, reply.message)
+    }
   }
 
   return { sent: replies.length }

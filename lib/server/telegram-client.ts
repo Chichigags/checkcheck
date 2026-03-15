@@ -34,3 +34,42 @@ export async function sendTelegramMessage(chatId: number, text: string): Promise
     disable_web_page_preview: true,
   })
 }
+
+export async function sendTelegramPhoto(chatId: number, imageBuffer: Buffer, caption?: string): Promise<void> {
+  const token = getTelegramToken()
+  const url = `https://api.telegram.org/bot${token}/sendPhoto`
+
+  const boundary = '----FormBoundary' + Math.random().toString(36).slice(2)
+
+  const parts: Buffer[] = []
+
+  parts.push(Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n`
+  ))
+
+  if (caption) {
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`
+    ))
+  }
+
+  parts.push(Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="color.png"\r\nContent-Type: image/png\r\n\r\n`
+  ))
+  parts.push(imageBuffer)
+  parts.push(Buffer.from(`\r\n--${boundary}--\r\n`))
+
+  const body = Buffer.concat(parts)
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    body,
+    cache: 'no-store',
+  })
+
+  const json = (await response.json()) as { ok: boolean; description?: string }
+  if (!response.ok || !json.ok) {
+    throw new Error(json.description ?? 'Telegram sendPhoto failed.')
+  }
+}
