@@ -45,10 +45,12 @@ export interface DailyWord {
 export interface DailyMessage {
   date: string
   nickname: string
+  todayVibe: string
   luckyColour: {
     name: string
     hex: string
   }
+  luckyNumber: number[]
   dailyLuck: string
   watchOut: string
   dailyFun: string
@@ -266,10 +268,26 @@ export function generateMockMessage(profile: UserProfile, customDate?: string): 
     }
   }
   
+  const vibeMessages = [
+    'Trust the slow build — it\'s working.',
+    'Say yes to the unexpected today.',
+    'Small wins count. Collect them.',
+    'Your energy is magnetic today — use it wisely.',
+    'Less overthinking, more doing.',
+    'The universe is conspiring in your favour.',
+    'Stay curious. Something good is brewing.',
+    'Let it flow — don\'t force it.',
+  ]
+  const vibeIndex = Math.floor(seededRandom(seed, 21) * vibeMessages.length)
+  const num1 = Math.floor(seededRandom(seed, 22) * 99) + 1
+  const num2 = Math.floor(seededRandom(seed, 23) * 99) + 1
+
   return {
     date: dateToUse,
     nickname: profile.nickname || profile.legalName,
+    todayVibe: vibeMessages[vibeIndex],
     luckyColour: luckyColours[colourIndex],
+    luckyNumber: [num1, num2 === num1 ? ((num2 % 99) + 1) : num2],
     dailyLuck: dailyLuckMessages[luckIndex],
     watchOut: watchOutMessages[watchIndex],
     dailyFun: dailyFunMessages[funIndex],

@@ -36,10 +36,12 @@ Your tone is: friendly, playful, insightful, concise. Like a smart friend who re
 You MUST respond with valid JSON matching this exact schema:
 
 {
+  "todayVibe": "A short punchy one-liner capturing today's energy (e.g. 'Trust the slow build — it's working.')",
   "luckyColour": {
     "name": "A creative colour name (e.g. 'Midnight Coral', 'Forest Sage')",
     "hex": "#RRGGBB hex code"
   },
+  "luckyNumber": [7, 23],
   "dailyLuck": "1-2 sentences of personalized positive insight for the day",
   "watchOut": "1-2 sentences about something to be mindful of today",
   "dailyFun": "1 sentence that's funny, quirky, or uplifting — like a fortune cookie with personality",
@@ -55,6 +57,8 @@ ${inspirationField}  "triggeredModules": [
 ${wordField}}
 
 Rules:
+- todayVibe: a short, catchy one-liner — think motto of the day, grounded in the BaZi/astrology context.
+- luckyNumber: pick 2 numbers (1-99) that feel thematically connected to the day's energy.
 - triggeredModules: include 1-2 modules. Pick types relevant to the user's life focus and situation.
 - For "lunar" type modules, always include "phase". For "transit" type, always include "planet".
 - For other module types (romance, career, conflict), do NOT include "phase" or "planet".
@@ -156,13 +160,18 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
   const luckyColour = parsed.luckyColour as { name?: string; hex?: string } | undefined
   const hasLanguage = profile.languagePreference && profile.languagePreference !== 'None'
 
+  const rawNumbers = Array.isArray(parsed.luckyNumber) ? parsed.luckyNumber : [7, 23]
+  const luckyNumber = rawNumbers.slice(0, 2).map((n: unknown) => Math.max(1, Math.min(99, Number(n) || 1)))
+
   return {
     date,
     nickname: profile.nickname || profile.legalName,
+    todayVibe: String(parsed.todayVibe ?? 'Go with the flow today.'),
     luckyColour: {
       name: String(luckyColour?.name ?? 'Ocean Blue'),
       hex: String(luckyColour?.hex ?? '#0077B6'),
     },
+    luckyNumber,
     dailyLuck: String(parsed.dailyLuck ?? ''),
     watchOut: String(parsed.watchOut ?? ''),
     dailyFun: String(parsed.dailyFun ?? ''),

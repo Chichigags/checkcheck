@@ -108,7 +108,9 @@ export const LAYER2_INTRO = "Nice — core onboarding done! Just 2 more quick on
 
 export const COMPLETION_MESSAGE = `You're all set — the cosmos is now calibrated to you 🎉
 
-Your personalised CheckCheck arrives tomorrow morning. Open the menu anytime to get today's reading now.`
+Type /cosmicid to see your personal BaZi & astrology chart, or /today to get your first reading now.
+
+Your daily CheckCheck drops tomorrow morning — enjoy the ride 🚀`
 
 export const DELIVERY_TIME_LABELS: Record<DeliveryTime, string> = {
   Morning: '8:00 AM',
