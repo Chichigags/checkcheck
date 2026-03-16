@@ -40,7 +40,7 @@ export async function sendDailyCheckCheck(chatId: number, message: DailyMessage)
     `🎨 Lucky Colour: ${message.luckyColour.name}`,
     `🔢 Lucky Number: ${numbers}`,
   ].join('\n')
-  const colorPng = generateColorPng(message.luckyColour.hex)
+  const colorPng = generateColorPng(message.luckyColour.hex, 400, 150)
   await sendTelegramPhoto(chatId, colorPng, caption)
   await sendTelegramMessage(chatId, formatDailyMessage(message))
 }

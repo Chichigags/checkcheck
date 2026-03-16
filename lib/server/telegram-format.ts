@@ -1,6 +1,7 @@
 import type { QuestionConfig } from '@/lib/profile'
 import { DELIVERY_TIME_LABELS } from '@/lib/profile'
 import type { DailyMessage } from '@/lib/generate-mock-message'
+import { languageFlags } from '@/lib/generate-mock-message'
 import type { DailyMessageRecord, ProfileRecord } from './types'
 
 export const COMMAND_HELP = [
@@ -42,7 +43,7 @@ export function formatDailyMessage(message: DailyMessage): string {
   const vibe = message.todayVibe || 'Go with the flow today.'
 
   const lines = [
-    `💫 ${vibe}`,
+    `💫 "${vibe}"`,
     '',
     `🍀 Daily Luck: ${message.dailyLuck}`,
     '',
@@ -60,9 +61,9 @@ export function formatDailyMessage(message: DailyMessage): string {
       lines.push('')
       const emoji = MODULE_EMOJI[module.type] ?? '⚡'
       if (module.type === 'lunar') {
-        lines.push(`${emoji} ${module.title} [${module.phase}]`)
+        lines.push(`${emoji} ${module.title} · ${module.phase}`)
       } else if (module.type === 'transit') {
-        lines.push(`${emoji} ${module.title} [${module.planet}]`)
+        lines.push(`${emoji} ${module.title} · ${module.planet}`)
       } else {
         lines.push(`${emoji} ${module.title}`)
       }
@@ -71,15 +72,19 @@ export function formatDailyMessage(message: DailyMessage): string {
   }
 
   if (message.dailyWord) {
+    const lang = message.dailyWord.language as keyof typeof languageFlags
+    const flag = languageFlags[lang] ?? '📖'
     lines.push(
       '',
-      `📖 Word of the Day (${message.dailyWord.language}): ${message.dailyWord.word}`,
+      `📖 Word of the Day ${flag}`,
+      `${message.dailyWord.word} — ${message.dailyWord.translation}`,
     )
     if (message.dailyWord.pronunciation) {
-      lines.push(`Pronunciation: /${message.dailyWord.pronunciation}/`)
+      lines.push(`/${message.dailyWord.pronunciation}/`)
     }
-    lines.push(`Meaning: ${message.dailyWord.translation}`)
   }
+
+  lines.push('', 'Have a great day ✨')
 
   return lines.join('\n')
 }

@@ -195,7 +195,7 @@ export async function generateDailyMessage(profile: UserProfile, date: string): 
 
     return parseLlmResponse(response, profile, date)
   } catch (error) {
-    console.error('LLM generation failed, falling back to mock:', error)
+    console.error('LLM generation failed, falling back to mock:', error instanceof Error ? error.message : error)
     return generateMockMessage(profile, date)
   }
 }
