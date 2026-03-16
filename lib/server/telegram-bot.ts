@@ -398,6 +398,12 @@ async function handleCommand(
       return ['Regenerated your daily CheckCheck:', { type: 'daily', message: freshMessage }]
     }
 
+    case '/reset': {
+      await updateProfile(profile.id, { onboarding_complete: false, layer2_complete: false })
+      await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
+      return ['Onboarding reset! Send /start to go through the setup again.']
+    }
+
     case '/settings':
       return [{ type: 'settings', profile }]
 

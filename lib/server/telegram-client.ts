@@ -46,6 +46,23 @@ export async function answerCallbackQuery(callbackQueryId: string): Promise<void
   })
 }
 
+const BOT_COMMANDS = [
+  { command: 'start', description: 'Begin or continue onboarding' },
+  { command: 'today', description: "Get today's CheckCheck" },
+  { command: 'regenerate', description: 'Generate a fresh CheckCheck for today' },
+  { command: 'settings', description: 'View and edit your profile' },
+  { command: 'reset', description: 'Redo onboarding from scratch' },
+  { command: 'pause', description: 'Pause daily sends (1-30 days)' },
+  { command: 'resume', description: 'Resume daily sends' },
+  { command: 'feedback', description: 'Send feedback' },
+  { command: 'stop', description: 'Stop automatic daily messages' },
+  { command: 'help', description: 'Show command list' },
+]
+
+export async function setBotCommands(): Promise<void> {
+  await telegramRequest('setMyCommands', { commands: BOT_COMMANDS })
+}
+
 export async function sendTelegramPhoto(chatId: number, imageBuffer: Buffer, caption?: string): Promise<void> {
   const token = getTelegramToken()
   const url = `https://api.telegram.org/bot${token}/sendPhoto`

@@ -9,6 +9,7 @@ export const COMMAND_HELP = [
   '/today - Get today\'s CheckCheck',
   '/regenerate - Generate a fresh CheckCheck for today',
   '/settings - View and edit your profile',
+  '/reset - Redo onboarding from scratch',
   '/pause [days] - Pause for 1-30 days',
   '/resume - Resume daily sends',
   '/feedback [text] - Send feedback',

@@ -4,12 +4,14 @@ import { generateDailyMessage } from './generate-daily-message'
 import { getDailyMessage, listDueProfiles, updateProfile, upsertDailyMessage } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
 import { sendDailyCheckCheck } from './telegram-bot'
+import { setBotCommands } from './telegram-client'
 
 function currentIsoDate(): string {
   return new Date().toISOString().split('T')[0]
 }
 
 export async function runDailyDispatch(limit = 200) {
+  await setBotCommands().catch((err) => console.error('setBotCommands failed:', err))
   const nowIso = new Date().toISOString()
   const dueProfiles = await listDueProfiles(nowIso, limit)
   let sent = 0
