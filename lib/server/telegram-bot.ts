@@ -33,8 +33,14 @@ import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './t
 type BotReply = string | { type: 'daily'; message: DailyMessage } | { type: 'settings'; profile: ProfileRecord }
 
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
+  const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
+  const caption = [
+    `CheckCheck for ${message.nickname} (${message.date})`,
+    `🎨 Lucky Colour: ${message.luckyColour.name}`,
+    `🔢 Lucky Number: ${numbers}`,
+  ].join('\n')
   const colorPng = generateColorPng(message.luckyColour.hex)
-  await sendTelegramPhoto(chatId, colorPng, `🎨 Lucky Colour: ${message.luckyColour.name}`)
+  await sendTelegramPhoto(chatId, colorPng, caption)
   await sendTelegramMessage(chatId, formatDailyMessage(message))
 }
 
