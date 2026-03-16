@@ -27,11 +27,22 @@ async function telegramRequest<T>(method: string, payload: Record<string, unknow
   return json.result as T
 }
 
-export async function sendTelegramMessage(chatId: number, text: string): Promise<void> {
+export async function sendTelegramMessage(
+  chatId: number,
+  text: string,
+  replyMarkup?: { inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> }
+): Promise<void> {
   await telegramRequest('sendMessage', {
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
+    ...(replyMarkup && { reply_markup: replyMarkup }),
+  })
+}
+
+export async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
+  await telegramRequest('answerCallbackQuery', {
+    callback_query_id: callbackQueryId,
   })
 }
 

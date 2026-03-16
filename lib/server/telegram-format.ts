@@ -8,18 +8,12 @@ export const COMMAND_HELP = [
   '/start - Begin or continue onboarding',
   '/today - Get today\'s CheckCheck',
   '/regenerate - Generate a fresh CheckCheck for today',
-  '/history - Last 7 daily messages',
-  '/settings - View your current profile',
+  '/settings - View and edit your profile',
   '/pause [days] - Pause for 1-30 days',
   '/resume - Resume daily sends',
-  '/edit [field] - Update one field',
-  '/timezone [tz] - Update timezone',
-  '/language [lang] - Set word-of-the-day language',
   '/feedback [text] - Send feedback',
   '/stop - Stop automatic daily messages',
   '/help - Show this list',
-  '',
-  'Editable fields: nickname, name, birthday, birthtime, birthcity, city, gender, delivery, timezone, language, relationship, focus, inspiration',
 ].join('\n')
 
 export function formatQuestionPrompt(question: QuestionConfig, step: number, total: number): string {
@@ -123,6 +117,32 @@ export function formatSettings(profile: ProfileRecord): string {
   }
 
   return ['Your profile:', ...entries.map((entry) => `- ${entry}`)].join('\n')
+}
+
+export const EDIT_BUTTONS: Array<{ text: string; callback_data: string }> = [
+  { text: '✏️ Nickname', callback_data: 'edit:nickname' },
+  { text: '✏️ Name', callback_data: 'edit:name' },
+  { text: '✏️ Birthday', callback_data: 'edit:birthday' },
+  { text: '✏️ Birth Time', callback_data: 'edit:birthtime' },
+  { text: '✏️ Birth City', callback_data: 'edit:birthcity' },
+  { text: '✏️ City', callback_data: 'edit:city' },
+  { text: '✏️ Gender', callback_data: 'edit:gender' },
+  { text: '✏️ Delivery', callback_data: 'edit:delivery' },
+  { text: '✏️ Timezone', callback_data: 'edit:timezone' },
+  { text: '✏️ Language', callback_data: 'edit:language' },
+  { text: '✏️ Relationship', callback_data: 'edit:relationship' },
+  { text: '✏️ Focus', callback_data: 'edit:focus' },
+  { text: '✏️ Inspiration', callback_data: 'edit:inspiration' },
+]
+
+export function getSettingsEditKeyboard() {
+  return {
+    inline_keyboard: [
+      EDIT_BUTTONS.slice(0, 4),
+      EDIT_BUTTONS.slice(4, 8),
+      EDIT_BUTTONS.slice(8, 13),
+    ],
+  }
 }
 
 export function formatHistory(records: DailyMessageRecord[]): string {

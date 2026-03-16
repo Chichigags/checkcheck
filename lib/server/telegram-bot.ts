@@ -17,7 +17,6 @@ import {
   deleteDailyMessage,
   ensureBotState,
   getDailyMessage,
-  getRecentDailyMessages,
   insertFeedback,
   recordTelegramUpdate,
   updateProfile,
@@ -26,11 +25,11 @@ import {
   upsertProfileFromTelegram,
 } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
-import { formatDailyMessage, formatHistory, formatQuestionPrompt, formatSettings, COMMAND_HELP } from './telegram-format'
-import { sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
+import { formatDailyMessage, formatQuestionPrompt, formatSettings, getSettingsEditKeyboard, COMMAND_HELP } from './telegram-format'
+import { answerCallbackQuery, sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
 import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './types'
 
-type BotReply = string | { type: 'daily'; message: DailyMessage }
+type BotReply = string | { type: 'daily'; message: DailyMessage } | { type: 'settings'; profile: ProfileRecord }
 
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
   const colorPng = generateColorPng(message.luckyColour.hex)
@@ -399,16 +398,8 @@ async function handleCommand(
       return ['Regenerated your daily CheckCheck:', { type: 'daily', message: freshMessage }]
     }
 
-    case '/history': {
-      if (!profile.onboarding_complete) {
-        return ['Please finish onboarding first with /start.']
-      }
-      const history = await getRecentDailyMessages(profile.id, 7)
-      return [formatHistory(history)]
-    }
-
     case '/settings':
-      return [formatSettings(profile)]
+      return [{ type: 'settings', profile }]
 
     case '/pause': {
       const days = Number.parseInt(args[0] ?? '', 10)
@@ -511,6 +502,46 @@ async function handleCommand(
 }
 
 export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ignored?: boolean; duplicate?: boolean; sent: number }> {
+  // Handle inline keyboard callbacks (edit profile buttons)
+  if (update.callback_query) {
+    const cq = update.callback_query
+    if (cq.message?.chat.type !== 'private' || !cq.from) {
+      return { ignored: true, sent: 0 }
+    }
+
+    const isNew = await recordTelegramUpdate(update.update_id)
+    if (!isNew) {
+      return { duplicate: true, sent: 0 }
+    }
+
+    const data = cq.data ?? ''
+    if (!data.startsWith('edit:')) {
+      await answerCallbackQuery(cq.id)
+      return { sent: 0 }
+    }
+
+    const fieldArg = data.slice(5).toLowerCase()
+    const mapped = EDITABLE_FIELDS[fieldArg]
+    if (!mapped) {
+      await answerCallbackQuery(cq.id)
+      return { sent: 0 }
+    }
+
+    const profile = await upsertProfileFromTelegram(cq.from)
+    const column = profileFieldToColumn(mapped)
+    const currentValue = profile[column]
+
+    await upsertBotState(profile.id, { awaiting_field: mapped })
+    const prompt =
+      mapped === 'dailyInspiration'
+        ? `Daily Inspiration is currently: ${currentValue ? 'On' : 'Off'}\nReply "on" or "off".`
+        : `Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`
+
+    await answerCallbackQuery(cq.id)
+    await sendTelegramMessage(cq.message.chat.id, prompt)
+    return { sent: 1 }
+  }
+
   if (!update.message?.from || !update.message.text || update.message.chat.type !== 'private') {
     return { ignored: true, sent: 0 }
   }
@@ -561,6 +592,12 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
       await sendTelegramMessage(chatId, reply)
     } else if (reply.type === 'daily') {
       await sendDailyCheckCheck(chatId, reply.message)
+    } else if (reply.type === 'settings') {
+      await sendTelegramMessage(
+        chatId,
+        formatSettings(reply.profile) + '\n\nTap a button below to edit:',
+        getSettingsEditKeyboard()
+      )
     }
   }
 
