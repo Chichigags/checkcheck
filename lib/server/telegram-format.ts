@@ -7,6 +7,7 @@ export const COMMAND_HELP = [
   'Available commands:',
   '/start - Begin or continue onboarding',
   '/today - Get today\'s CheckCheck',
+  '/bazi - View your BaZi chart (八字命盘)',
   '/regenerate - Generate a fresh CheckCheck for today',
   '/settings - View and edit your profile',
   '/reset - Redo onboarding from scratch',

@@ -1,3 +1,4 @@
+import { calculateChart, formatBaziChart, getProfile } from '@/lib/bazi'
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import {
   COMPLETION_MESSAGE,
@@ -368,6 +369,16 @@ async function handleCommand(
       await updateProfile(profile.id, { onboarding_complete: false, layer2_complete: false })
       await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
       return ['Onboarding reset! Send /start to go through the setup again.']
+    }
+
+    case '/bazi': {
+      if (!profile.onboarding_complete) {
+        return ['Please finish onboarding first — I need your birth data to calculate your BaZi chart.']
+      }
+      const userProfile = toUserProfile(profile)
+      const chart = calculateChart(userProfile.dateOfBirth, userProfile.birthTime)
+      const baziProfile = getProfile(chart)
+      return [formatBaziChart(baziProfile)]
     }
 
     case '/settings':
