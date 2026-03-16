@@ -1,3 +1,4 @@
+import { buildAstroContext } from '@/lib/astrology'
 import { buildDailyContext, calculateChart } from '@/lib/bazi'
 import type { DailyMessage, DailyWord, TriggeredModule } from '@/lib/generate-mock-message'
 import { generateMockMessage } from '@/lib/generate-mock-message'
@@ -26,9 +27,9 @@ function buildSystemPrompt(wantInspiration: boolean, wantWord: boolean): string 
     ? '- dailyWord: only include if the user has a language preference that is not "None". Pick a word that connects to the day\'s theme.\n'
     : ''
 
-  return `You are CheckCheck, a warm and witty daily insights companion. You create personalized daily readings grounded in real Chinese BaZi (八字) calculations and Western astrology, delivered as practical, punchy advice.
+  return `You are CheckCheck, a warm and witty daily insights companion. You create personalized daily readings grounded in real Chinese BaZi (八字) calculations and Western astrology data, delivered as practical, punchy advice.
 
-IMPORTANT: You will receive computed BaZi data (Four Pillars, Day Master, element interactions, clashes, harmonies) calculated from the user's actual birth data. Use these as the foundation for your reading. Reference specific elements, interactions, and the Day Master relationship when relevant. Do NOT invent BaZi data — only interpret what is provided.
+IMPORTANT: You will receive COMPUTED data from both systems — BaZi (Four Pillars, Day Master, element interactions, clashes, harmonies) and Western astrology (Sun sign, Moon phase, Sun transit, element dynamics). These are calculated from the user's actual birth data and today's date. Use them as the foundation for your reading. Reference specific elements, interactions, moon phase energy, and sign dynamics when relevant. Do NOT invent data — only interpret what is provided.
 
 Your tone is: friendly, playful, insightful, concise. Like a smart friend who reads horoscopes ironically but still finds wisdom in them.
 
@@ -67,6 +68,7 @@ ${inspirationRule}${wordRule}- Make content feel personal using the user's name,
 function buildUserPrompt(profile: UserProfile, date: string): string {
   const chart = calculateChart(profile.dateOfBirth, profile.birthTime)
   const baziContext = buildDailyContext(chart, date)
+  const astroContext = buildAstroContext(profile.dateOfBirth, date)
 
   const parts = [
     `Generate a CheckCheck daily reading for ${date}.`,
@@ -97,7 +99,7 @@ function buildUserPrompt(profile: UserProfile, date: string): string {
     parts.push('- Language preference: None (skip dailyWord)')
   }
 
-  parts.push('', baziContext, '', 'Respond with JSON only. No markdown, no code fences, no explanation.')
+  parts.push('', baziContext, '', astroContext, '', 'Respond with JSON only. No markdown, no code fences, no explanation.')
 
   return parts.join('\n')
 }

@@ -300,11 +300,23 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
 
 // ── Telegram Display Format ────────────────────────────────────────
 
-export function formatBaziChart(profile: BaziProfile): string {
+import type { AstroProfile } from './astrology'
+import { formatAstroProfile, getAstroProfile } from './astrology'
+
+export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayDate: string): string {
+  const astro = getAstroProfile(dateOfBirth, todayDate)
   const { chart, dayMaster, elements } = profile
 
   const lines = [
-    '🏮 Your BaZi Chart (八字命盘)',
+    '🪪 My Cosmic ID',
+    '',
+    // ── Western Astrology ──
+    '✦ WESTERN ASTROLOGY',
+    '',
+    formatAstroProfile(astro),
+    '',
+    // ── Chinese BaZi ──
+    '✦ CHINESE BAZI (八字)',
     '',
     '📜 Four Pillars:',
   ]
@@ -331,7 +343,7 @@ export function formatBaziChart(profile: BaziProfile): string {
     dayMaster.description,
   )
 
-  lines.push('', '⚖️ Five Elements:')
+  lines.push('', '⚖️ Five Elements (BaZi):')
   const maxCount = Math.max(...Object.values(elements), 1)
   for (const el of EL_ORDER) {
     const count = elements[el]
@@ -341,10 +353,10 @@ export function formatBaziChart(profile: BaziProfile): string {
   }
 
   if (!chart.hour) {
-    lines.push('', '💡 Tip: Update your birth time via /settings for a more complete chart (Hour Pillar).')
+    lines.push('', '💡 Update your birth time via /settings for a complete chart.')
   }
 
-  lines.push('', 'The Day Pillar (⭐) represents your core inner self.')
+  lines.push('', 'The Day Pillar (⭐) is the core of your chart — your inner self.')
 
   return lines.join('\n')
 }

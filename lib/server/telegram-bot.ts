@@ -1,4 +1,4 @@
-import { calculateChart, formatBaziChart, getProfile } from '@/lib/bazi'
+import { calculateChart, formatCosmicId, getProfile } from '@/lib/bazi'
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import {
   COMPLETION_MESSAGE,
@@ -371,14 +371,15 @@ async function handleCommand(
       return ['Onboarding reset! Send /start to go through the setup again.']
     }
 
+    case '/cosmicid':
     case '/bazi': {
       if (!profile.onboarding_complete) {
-        return ['Please finish onboarding first — I need your birth data to calculate your BaZi chart.']
+        return ['Please finish onboarding first — I need your birth data to build your Cosmic ID.']
       }
       const userProfile = toUserProfile(profile)
       const chart = calculateChart(userProfile.dateOfBirth, userProfile.birthTime)
       const baziProfile = getProfile(chart)
-      return [formatBaziChart(baziProfile)]
+      return [formatCosmicId(baziProfile, userProfile.dateOfBirth, currentIsoDate())]
     }
 
     case '/settings':
