@@ -39,13 +39,16 @@ export function formatQuestionPrompt(question: QuestionConfig, step: number, tot
 }
 
 export function formatDailyMessage(message: DailyMessage): string {
+  const vibe = message.todayVibe || 'Go with the flow today.'
+  const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
+
   const lines = [
     `CheckCheck for ${message.nickname} (${message.date})`,
     '',
-    `💫 ${message.todayVibe}`,
+    `💫 ${vibe}`,
     '',
     `🎨 Lucky Colour: ${message.luckyColour.name}`,
-    `🔢 Lucky Number: ${message.luckyNumber.join(', ')}`,
+    `🔢 Lucky Number: ${numbers}`,
     '',
     `🍀 Daily Luck: ${message.dailyLuck}`,
     '',
