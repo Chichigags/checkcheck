@@ -39,7 +39,7 @@ export function formatQuestionPrompt(question: QuestionConfig, step: number, tot
 
 export function formatDailyMessage(message: DailyMessage): string {
   const lines = [
-    `CheckCheck for ${message.nickname} (${message.date})`,
+    `CheckCheck for ${message.nickname} (${message.date}) — no harm in checking 😏`,
     '',
     `🍀 Daily Luck: ${message.dailyLuck}`,
     '',
