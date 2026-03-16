@@ -4,7 +4,6 @@ export type Language = 'German' | 'Mandarin' | 'Japanese' | 'Spanish' | 'French'
 export type Gender = 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say'
 export type RelationshipStatus = 'Single' | 'In a relationship' | 'Married' | 'Divorced' | 'Widowed' | "It's complicated" | 'Prefer not to say'
 export type LifeFocus = 'Career' | 'Relationships' | 'Health' | 'Wealth' | 'Personal Growth' | 'Others' | 'Creativity' | 'Spirituality'
-export type DailyExtras = 'A' | 'B' | 'both' | 'C'
 
 export interface UserProfile {
   legalName: string
@@ -23,7 +22,7 @@ export interface UserProfile {
   hasCompletedLayer2?: boolean
 }
 
-export type QuestionType = 'text' | 'date' | 'birthTime' | 'select' | 'timezone' | 'language' | 'textWithShortcut' | 'extras'
+export type QuestionType = 'text' | 'date' | 'birthTime' | 'select' | 'timezone' | 'language' | 'textWithShortcut'
 
 export interface QuestionConfig {
   id: keyof UserProfile
@@ -83,20 +82,10 @@ export const onboardingQuestions: QuestionConfig[] = [
     shortcutLabel: 'Same',
   },
   {
-    id: 'dailyInspiration',
-    question: `Almost done! Want any daily extras with your CheckCheck?
-💬 A — Daily Inspiration (a short quote to kickstart your day)
-📖 B — Word of the Day (pick up a new language, one word at a time)
-🙅 C — No thanks
-
-Reply A, B, both, or C.`,
-    type: 'extras',
-  },
-  {
     id: 'languagePreference',
-    question: 'Which language are you learning? Pick one, or reply "Skip" if yours isn\'t listed.',
-    type: 'language',
-    options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian'],
+    question: 'Almost done! Want a Word of the Day? Pick up a new language, one word at a time 📖',
+    type: 'select',
+    options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian', 'No thanks'],
   },
 ]
 
@@ -135,15 +124,3 @@ export function deliveryLabelToSlot(label: string): DeliveryTime | null {
   return null
 }
 
-export function parseExtrasAnswer(answer: string): { inspiration: boolean; wantLanguage: boolean } {
-  const normalized = answer.trim().toLowerCase()
-  if (normalized === 'a') return { inspiration: true, wantLanguage: false }
-  if (normalized === 'b') return { inspiration: false, wantLanguage: true }
-  if (normalized === 'both' || normalized === 'ab' || normalized === 'a and b' || normalized === 'a, b' || normalized === 'a b') {
-    return { inspiration: true, wantLanguage: true }
-  }
-  if (normalized === 'c' || normalized === 'no' || normalized === 'none' || normalized === 'no thanks') {
-    return { inspiration: false, wantLanguage: false }
-  }
-  return { inspiration: false, wantLanguage: false }
-}

@@ -6,7 +6,6 @@ import {
   deliveryLabelToSlot,
   layer2Questions,
   onboardingQuestions,
-  parseExtrasAnswer,
   type Language,
   type QuestionConfig,
   type UserProfile,
@@ -99,7 +98,6 @@ function normalizeQuestionAnswer(
   }
 
   if (question.type === 'select' && question.options) {
-    // For delivery time, accept time labels like "07:00" and map to slot names
     if (question.id === 'deliveryTime') {
       const slot = deliveryLabelToSlot(trimmed)
       if (!slot) {
@@ -107,9 +105,17 @@ function normalizeQuestionAnswer(
       }
       return { ok: true, value: slot }
     }
+    if (question.id === 'languagePreference') {
+      if (/^(no thanks|no|none|skip)$/i.test(trimmed)) {
+        return { ok: true, value: 'None' }
+      }
+    }
     const option = pickOption(trimmed, question.options)
     if (!option) {
       return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
+    }
+    if (option === 'No thanks') {
+      return { ok: true, value: 'None' }
     }
     return { ok: true, value: option }
   }
@@ -126,32 +132,6 @@ function normalizeQuestionAnswer(
     return { ok: true, value: option }
   }
 
-  if (question.type === 'language' && question.options) {
-    if (trimmed.toLowerCase() === 'skip' || trimmed.toLowerCase() === 'none') {
-      return { ok: true, value: 'None' }
-    }
-    const option = pickOption(trimmed, question.options)
-    if (!option) {
-      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')} — or reply "Skip"` }
-    }
-    return { ok: true, value: option }
-  }
-
-  if (question.type === 'extras') {
-    const parsed = parseExtrasAnswer(trimmed)
-    if (!parsed.inspiration && !parsed.wantLanguage) {
-      // Could be "C" / "no" — valid
-      if (/^(c|no|none|no thanks)$/i.test(trimmed)) {
-        return { ok: true, value: 'C' }
-      }
-    }
-    if (parsed.inspiration || parsed.wantLanguage) {
-      if (parsed.inspiration && parsed.wantLanguage) return { ok: true, value: 'both' }
-      if (parsed.inspiration) return { ok: true, value: 'A' }
-      return { ok: true, value: 'B' }
-    }
-    return { ok: false, message: 'Please reply A, B, both, or C.' }
-  }
 
   if (question.type === 'date') {
     if (!isValidDate(trimmed)) {
@@ -242,24 +222,6 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
     return [parsed.message, formatQuestionPrompt(question, safeStep, questions.length)]
   }
 
-  // Handle extras question (Q9) — sets dailyInspiration and conditionally skips language question
-  if (question.type === 'extras') {
-    const extras = parseExtrasAnswer(text)
-    await updateProfile(profile.id, { daily_inspiration: extras.inspiration })
-
-    if (extras.wantLanguage) {
-      // Proceed to the language question (next step)
-      const nextStep = safeStep + 1
-      await upsertBotState(profile.id, { flow, step: nextStep, awaiting_field: null })
-      return [formatQuestionPrompt(questions[nextStep], nextStep, questions.length)]
-    }
-
-    // No language wanted — set to None and skip language question, finish onboarding
-    await updateProfile(profile.id, { language_preference: 'None' })
-    return await finishOnboarding(profile, flow)
-  }
-
-  // Handle delivery time — store the slot name (Morning/Afternoon/Evening)
   const patch: Partial<ProfileRecord> = buildProfilePatch(question.id, parsed.value)
 
   // After current city answer, auto-detect timezone
@@ -292,6 +254,7 @@ async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<
     await updateProfile(profile.id, {
       onboarding_complete: true,
       delivery_time: 'Morning',
+      daily_inspiration: true,
       next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
       status: 'active',
     })
