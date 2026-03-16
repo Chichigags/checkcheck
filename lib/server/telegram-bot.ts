@@ -35,8 +35,9 @@ type BotReply = string | { type: 'daily'; message: DailyMessage } | { type: 'set
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
   const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
   const caption = [
+    `CheckCheck for ${message.nickname} (${message.date})`,
     '',
-    `CheckCheck for ${message.nickname} (${message.date})  🎨 ${message.luckyColour.name}`,
+    `🎨 Lucky Colour: ${message.luckyColour.name}`,
     `🔢 Lucky Number: ${numbers}`,
   ].join('\n')
   const colorPng = generateColorPng(message.luckyColour.hex)
