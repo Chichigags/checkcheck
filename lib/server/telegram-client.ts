@@ -47,10 +47,9 @@ export async function answerCallbackQuery(callbackQueryId: string): Promise<void
 }
 
 const BOT_COMMANDS = [
-  { command: 'start', description: 'Begin or continue onboarding' },
   { command: 'today', description: "Get today's CheckCheck" },
   { command: 'cosmicid', description: 'View your Cosmic ID (BaZi + Astrology)' },
-  { command: 'regenerate', description: 'Generate a fresh CheckCheck for today' },
+  { command: 'start', description: 'Begin or continue onboarding' },
   { command: 'settings', description: 'View and edit your profile' },
   { command: 'reset', description: 'Redo onboarding from scratch' },
   { command: 'pause', description: 'Pause daily sends (1-30 days)' },

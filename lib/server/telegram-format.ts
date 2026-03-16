@@ -5,10 +5,9 @@ import type { DailyMessageRecord, ProfileRecord } from './types'
 
 export const COMMAND_HELP = [
   'Available commands:',
-  '/start - Begin or continue onboarding',
   '/today - Get today\'s CheckCheck',
   '/cosmicid - View your Cosmic ID (BaZi + Astrology)',
-  '/regenerate - Generate a fresh CheckCheck for today',
+  '/start - Begin or continue onboarding',
   '/settings - View and edit your profile',
   '/reset - Redo onboarding from scratch',
   '/pause [days] - Pause for 1-30 days',
