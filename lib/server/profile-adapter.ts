@@ -35,7 +35,7 @@ function asDeliveryTime(value: string | null): DeliveryTime {
 }
 
 function asLanguage(value: string | null): Language {
-  if (value === 'German' || value === 'Mandarin' || value === 'Japanese' || value === 'Spanish' || value === 'French' || value === 'None') {
+  if (value === 'German' || value === 'Mandarin' || value === 'Japanese' || value === 'Spanish' || value === 'French' || value === 'Indonesian' || value === 'None') {
     return value
   }
   return 'None'

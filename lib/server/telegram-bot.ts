@@ -1,6 +1,7 @@
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import {
   COMPLETION_MESSAGE,
+  LAYER2_INTRO,
   WELCOME_MESSAGE,
   deliveryLabelToSlot,
   layer2Questions,
@@ -284,11 +285,11 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
 
 async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<BotReply[]> {
   if (flow === 'onboarding') {
-    const deliveryTime = normalizeDeliveryTime(profile.delivery_time)
     const timeZone = normalizeTimeZone(profile.timezone)
     await updateProfile(profile.id, {
       onboarding_complete: true,
-      next_delivery_at: computeNextDeliveryAt(timeZone, deliveryTime),
+      delivery_time: 'Morning',
+      next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
       status: 'active',
     })
     await upsertBotState(profile.id, {
@@ -297,8 +298,7 @@ async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<
       awaiting_field: null,
     })
     return [
-      COMPLETION_MESSAGE,
-      "But first — 2 quick bonus questions to make your readings even more personal:",
+      LAYER2_INTRO,
       formatQuestionPrompt(layer2Questions[0], 0, layer2Questions.length),
     ]
   }
@@ -310,7 +310,7 @@ async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<
     step: 0,
     awaiting_field: null,
   })
-  return ['Perfect, personalisation complete! Your CheckCheck readings will now be even more tailored to you. Use /today to get your reading now.']
+  return [COMPLETION_MESSAGE]
 }
 
 async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
@@ -472,7 +472,7 @@ async function handleCommand(
 
     case '/language': {
       const provided = args[0]
-      const allowed: Language[] = ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'None']
+      const allowed: Language[] = ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian', 'None']
       if (!provided) {
         return [`Current language: ${profile.language_preference || 'None'}\nAvailable: ${allowed.join(', ')}`]
       }

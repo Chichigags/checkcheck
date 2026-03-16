@@ -156,6 +156,13 @@ const dailyWords: Record<Exclude<Language, 'None'>, { word: string; translation:
     { word: 'Épanouir', translation: 'To bloom or flourish', pronunciation: 'ay-pah-noo-EER' },
     { word: 'Ennui', translation: 'A feeling of listless boredom', pronunciation: 'on-WEE' },
   ],
+  Indonesian: [
+    { word: 'Jayus', translation: 'A joke so unfunny it becomes funny', pronunciation: 'JAH-yoos' },
+    { word: 'Semangat', translation: 'Spirit, enthusiasm, keep going!', pronunciation: 'seh-MANG-at' },
+    { word: 'Rindu', translation: 'A deep longing or missing someone', pronunciation: 'RIN-doo' },
+    { word: 'Gotong royong', translation: 'Working together as a community', pronunciation: 'GO-tong ROY-ong' },
+    { word: 'Baper', translation: 'Getting overly emotional (bawa perasaan)', pronunciation: 'BAH-per' },
+  ],
 }
 
 const romanceModules: Omit<RomanceModule, 'type'>[] = [
@@ -194,6 +201,7 @@ const languageFlags: Record<Exclude<Language, 'None'>, string> = {
   Japanese: '🇯🇵',
   Spanish: '🇪🇸',
   French: '🇫🇷',
+  Indonesian: '🇮🇩',
 }
 
 export function generateMockMessage(profile: UserProfile, customDate?: string): DailyMessage {

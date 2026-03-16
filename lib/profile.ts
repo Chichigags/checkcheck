@@ -1,9 +1,9 @@
 export type BirthTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening' | 'Night' | 'Unknown' | string
 export type DeliveryTime = 'Morning' | 'Afternoon' | 'Evening'
-export type Language = 'German' | 'Mandarin' | 'Japanese' | 'Spanish' | 'French' | 'None'
+export type Language = 'German' | 'Mandarin' | 'Japanese' | 'Spanish' | 'French' | 'Indonesian' | 'None'
 export type Gender = 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say'
 export type RelationshipStatus = 'Single' | 'In a relationship' | 'Married' | 'Divorced' | 'Widowed' | "It's complicated" | 'Prefer not to say'
-export type LifeFocus = 'Career' | 'Relationships' | 'Health' | 'Wealth' | 'Personal Growth' | 'Creativity' | 'Spirituality'
+export type LifeFocus = 'Career' | 'Relationships' | 'Health' | 'Wealth' | 'Personal Growth' | 'Others' | 'Creativity' | 'Spirituality'
 export type DailyExtras = 'A' | 'B' | 'both' | 'C'
 
 export interface UserProfile {
@@ -34,9 +34,9 @@ export interface QuestionConfig {
   shortcutLabel?: string
 }
 
-export const WELCOME_MESSAGE = `Welcome to CheckCheck — your personal daily fortune digest, blending Chinese BaZi and Western astrology into one punchy morning message.
+export const WELCOME_MESSAGE = `Hi there, welcome to CheckCheck — your daily cosmic cheat sheet, blending Chinese BaZi and Western astrology into one punchy message. No fluff, just the good stuff.
 
-Your readings are fully personalised — so please use your real details. The more accurate, the better your daily CheckCheck. You can always update anything later with /edit.`
+I just need to know you a bit first. The more accurate, the better your reading — you can always tweak things later.`
 
 export const onboardingQuestions: QuestionConfig[] = [
   {
@@ -47,25 +47,25 @@ export const onboardingQuestions: QuestionConfig[] = [
   },
   {
     id: 'nickname',
-    question: "What's your preferred nickname? This is what I'll use day-to-day.",
+    question: "And what should I call you? This is what I'll use day-to-day.",
     type: 'text',
     placeholder: 'Enter your nickname',
   },
   {
     id: 'dateOfBirth',
-    question: "Birthday? Solar calendar please — not lunar.\nFormat: YYYY-MM-DD\ne.g. 1987-01-03",
+    question: "What's your date of birth?\nPlease use the Gregorian calendar (the standard international one, not lunar).\nFormat: YYYY-MM-DD",
     type: 'date',
     placeholder: 'YYYY-MM-DD',
   },
   {
     id: 'birthTime',
-    question: "Birth time? This improves reading accuracy quite a bit.\nEnter exact time in 24hr format: HH:MM\nOr pick an approximate:",
+    question: "What time were you born? This helps make your reading more accurate.\nEnter exact time in 24h format (HH:MM), or pick:",
     type: 'birthTime',
-    options: ['Morning', 'Noon', 'Afternoon', 'Evening', 'Night', 'Unknown'],
+    options: ['Morning', 'Noon', 'Afternoon', 'Evening', 'Night', 'I don\'t know'],
   },
   {
     id: 'birthCity',
-    question: "Where were you born?\nFormat: City, Country\ne.g. Beijing, China or Paris, France",
+    question: "Where were you born? Your birthplace helps anchor your chart.\nFormat: City, Country",
     type: 'text',
     placeholder: 'City, Country',
   },
@@ -77,53 +77,49 @@ export const onboardingQuestions: QuestionConfig[] = [
   },
   {
     id: 'currentCity',
-    question: 'Where do you live now?\nFormat: City, Country — or reply "Same" if unchanged.\ne.g. Singapore, Singapore',
+    question: 'Where do you live now?\nFormat: City, Country, or reply "Same" if same as birth city.\ne.g. Singapore, Singapore',
     type: 'textWithShortcut',
     placeholder: 'City, Country',
     shortcutLabel: 'Same',
   },
   {
-    id: 'deliveryTime',
-    question: 'What time should your CheckCheck arrive each day? (Local time)',
-    type: 'select',
-    options: ['8:00 AM', '12:00 PM', '7:00 PM'],
-  },
-  {
     id: 'dailyInspiration',
-    question: `Almost done! Any daily extras?
-💬 A — Daily Inspiration (a short quote to start your day)
-📖 B — Word of the Day (if you're learning a new language)
+    question: `Almost done! Want any daily extras with your CheckCheck?
+💬 A — Daily Inspiration (a short quote to kickstart your day)
+📖 B — Word of the Day (pick up a new language, one word at a time)
 🙅 C — No thanks
 
-Reply A, B, or C`,
+Reply A, B, both, or C.`,
     type: 'extras',
   },
   {
     id: 'languagePreference',
     question: 'Which language are you learning?',
     type: 'language',
-    options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French'],
+    options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian'],
   },
 ]
 
 export const layer2Questions: QuestionConfig[] = [
   {
     id: 'relationshipStatus',
-    question: "Great, your core onboarding is complete. Let's do 2 quick personalised questions. (1/2) What's your current relationship status?",
+    question: "What's your current relationship status?",
     type: 'select',
     options: ['Single', 'In a relationship', "It's complicated", 'Prefer not to say'],
   },
   {
     id: 'lifeFocus',
-    question: '(2/2) What area of life are you most focused on right now?',
+    question: 'What area of life are you most focused on right now?',
     type: 'select',
-    options: ['Career', 'Relationships', 'Health', 'Wealth', 'Personal Growth'],
+    options: ['Career', 'Relationships', 'Health', 'Wealth', 'Personal Growth', 'Others'],
   },
 ]
 
-export const COMPLETION_MESSAGE = `You're all set! 🎉 Your first CheckCheck arrives tomorrow at your chosen time.
+export const LAYER2_INTRO = "Nice — core onboarding done! Just 2 more quick ones to make your readings even more personal."
 
-Type /today for today's reading, or /help to see all commands.`
+export const COMPLETION_MESSAGE = `You're all set — the cosmos is now calibrated to you 🎉
+
+Your personalised CheckCheck arrives tomorrow morning. Open the menu anytime to get today's reading now.`
 
 export const DELIVERY_TIME_LABELS: Record<DeliveryTime, string> = {
   Morning: '8:00 AM',
