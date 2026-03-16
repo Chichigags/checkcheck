@@ -77,7 +77,7 @@ export const onboardingQuestions: QuestionConfig[] = [
   },
   {
     id: 'currentCity',
-    question: 'Where do you live now?\nFormat: City, Country, or reply "Same" if same as birth city.\ne.g. Singapore, Singapore',
+    question: 'Where do you live now?\nFormat: City, Country\ne.g. Singapore, Singapore',
     type: 'textWithShortcut',
     placeholder: 'City, Country',
     shortcutLabel: 'Same',
@@ -94,7 +94,7 @@ Reply A, B, both, or C.`,
   },
   {
     id: 'languagePreference',
-    question: 'Which language are you learning?',
+    question: 'Which language are you learning? Pick one, or reply "Skip" if yours isn\'t listed.',
     type: 'language',
     options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian'],
   },

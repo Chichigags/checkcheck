@@ -127,9 +127,12 @@ function normalizeQuestionAnswer(
   }
 
   if (question.type === 'language' && question.options) {
+    if (trimmed.toLowerCase() === 'skip' || trimmed.toLowerCase() === 'none') {
+      return { ok: true, value: 'None' }
+    }
     const option = pickOption(trimmed, question.options)
     if (!option) {
-      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
+      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')} — or reply "Skip"` }
     }
     return { ok: true, value: option }
   }
