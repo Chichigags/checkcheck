@@ -51,7 +51,7 @@ const BOT_COMMANDS = [
   { command: 'cosmicid', description: 'View your Cosmic ID (BaZi + Astrology)' },
   { command: 'start', description: 'Begin or continue onboarding' },
   { command: 'settings', description: 'View and edit your profile' },
-  { command: 'reset', description: 'Redo onboarding from scratch' },
+  { command: 'language', description: 'Change app language (English / 中文)' },
   { command: 'pause', description: 'Pause daily sends (1-30 days)' },
   { command: 'resume', description: 'Resume daily sends' },
   { command: 'feedback', description: 'Send feedback' },

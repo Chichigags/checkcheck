@@ -1,4 +1,5 @@
-import type { DeliveryTime, Language, UserProfile } from '@/lib/profile'
+import type { AppLanguage, DeliveryTime, UserProfile } from '@/lib/profile'
+import { normalizeAppLanguage } from '@/lib/i18n'
 import type { ProfileRecord } from './types'
 
 const PROFILE_KEY_TO_COLUMN: Record<keyof UserProfile, keyof ProfileRecord> = {
@@ -34,22 +35,20 @@ function asDeliveryTime(value: string | null): DeliveryTime {
   return 'Morning'
 }
 
-function asLanguage(value: string | null): Language {
-  if (value === 'German' || value === 'Mandarin' || value === 'Japanese' || value === 'Spanish' || value === 'French' || value === 'Indonesian' || value === 'None') {
-    return value
-  }
-  return 'None'
+function asLanguage(value: string | null): AppLanguage {
+  return normalizeAppLanguage(value)
 }
 
 export function toUserProfile(record: ProfileRecord): UserProfile {
+  const displayName = record.nickname ?? record.telegram_username ?? 'friend'
   return {
-    legalName: record.legal_name ?? 'Unknown',
-    nickname: record.nickname ?? record.telegram_username ?? 'friend',
+    legalName: record.legal_name ?? displayName,
+    nickname: displayName,
     dateOfBirth: record.date_of_birth ?? '1990-01-01',
     birthTime: record.birth_time ?? 'Unknown',
     birthCity: record.birth_city ?? 'Unknown',
     gender: (record.gender as UserProfile['gender']) ?? 'Prefer not to say',
-    currentCity: record.current_city ?? undefined as unknown as string,
+    currentCity: record.current_city ?? '',
     deliveryTime: asDeliveryTime(record.delivery_time),
     timezone: record.timezone || 'UTC',
     dailyInspiration: record.daily_inspiration ?? false,
@@ -62,29 +61,48 @@ export function toUserProfile(record: ProfileRecord): UserProfile {
 
 const COUNTRY_TO_TIMEZONE: Record<string, string> = {
   'china': 'Asia/Shanghai',
+  '中国': 'Asia/Shanghai',
   'hong kong': 'Asia/Hong_Kong',
+  '香港': 'Asia/Hong_Kong',
   'taiwan': 'Asia/Taipei',
+  '台湾': 'Asia/Taipei',
   'japan': 'Asia/Tokyo',
+  '日本': 'Asia/Tokyo',
   'south korea': 'Asia/Seoul',
   'korea': 'Asia/Seoul',
+  '韩国': 'Asia/Seoul',
   'singapore': 'Asia/Singapore',
+  '新加坡': 'Asia/Singapore',
   'malaysia': 'Asia/Kuala_Lumpur',
+  '马来西亚': 'Asia/Kuala_Lumpur',
   'thailand': 'Asia/Bangkok',
+  '泰国': 'Asia/Bangkok',
   'vietnam': 'Asia/Ho_Chi_Minh',
+  '越南': 'Asia/Ho_Chi_Minh',
   'philippines': 'Asia/Manila',
+  '菲律宾': 'Asia/Manila',
   'indonesia': 'Asia/Jakarta',
+  '印尼': 'Asia/Jakarta',
+  '印度尼西亚': 'Asia/Jakarta',
   'india': 'Asia/Kolkata',
+  '印度': 'Asia/Kolkata',
   'australia': 'Australia/Sydney',
+  '澳大利亚': 'Australia/Sydney',
   'new zealand': 'Pacific/Auckland',
   'united states': 'America/New_York',
   'usa': 'America/New_York',
   'us': 'America/New_York',
+  '美国': 'America/New_York',
   'canada': 'America/Toronto',
+  '加拿大': 'America/Toronto',
   'united kingdom': 'Europe/London',
   'uk': 'Europe/London',
   'england': 'Europe/London',
+  '英国': 'Europe/London',
   'germany': 'Europe/Berlin',
+  '德国': 'Europe/Berlin',
   'france': 'Europe/Paris',
+  '法国': 'Europe/Paris',
   'italy': 'Europe/Rome',
   'spain': 'Europe/Madrid',
   'portugal': 'Europe/Lisbon',
@@ -156,7 +174,8 @@ const COUNTRY_TO_TIMEZONE: Record<string, string> = {
  * Returns null if no match found (caller should default to UTC or ask user).
  */
 export function inferTimezoneFromCity(cityCountry: string): string | null {
-  const parts = cityCountry.split(',')
+  const normalized = cityCountry.replace(/，/g, ',')
+  const parts = normalized.split(',')
   if (parts.length < 2) return null
 
   const country = parts[parts.length - 1].trim().toLowerCase()

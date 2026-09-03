@@ -1,16 +1,19 @@
 import { calculateChart, formatCosmicId, getProfile } from '@/lib/bazi'
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import {
-  COMPLETION_MESSAGE,
   LAYER2_INTRO,
   WELCOME_MESSAGE,
+  canonicalizeAppLanguage,
+  canonicalizeBirthTimeOption,
+  canonicalizeGender,
   deliveryLabelToSlot,
+  getOnboardingQuestions,
   layer2Questions,
-  onboardingQuestions,
-  type Language,
+  type AppLanguage,
   type QuestionConfig,
   type UserProfile,
 } from '@/lib/profile'
+import { normalizeAppLanguage, t } from '@/lib/i18n'
 import { generateDailyMessage } from './generate-daily-message'
 import { generateColorPng } from './color-image'
 import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
@@ -18,6 +21,7 @@ import {
   deleteDailyMessage,
   ensureBotState,
   getDailyMessage,
+  getRecentDailyMessages,
   insertFeedback,
   recordTelegramUpdate,
   updateProfile,
@@ -26,19 +30,28 @@ import {
   upsertProfileFromTelegram,
 } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
-import { formatDailyMessage, formatQuestionPrompt, formatSettings, getSettingsEditKeyboard, COMMAND_HELP } from './telegram-format'
+import { formatDailyMessage, formatQuestionPrompt, formatSettings, getSettingsEditKeyboard } from './telegram-format'
 import { answerCallbackQuery, sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
 import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './types'
 
 type BotReply = string | { type: 'daily'; message: DailyMessage } | { type: 'settings'; profile: ProfileRecord }
 
+function langOf(profile: ProfileRecord): AppLanguage {
+  return normalizeAppLanguage(profile.language_preference)
+}
+
+function questionsFor(profile: ProfileRecord): QuestionConfig[] {
+  return getOnboardingQuestions(langOf(profile))
+}
+
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
+  const lang = normalizeAppLanguage(message.language)
   const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
   const caption = [
-    `CheckCheck for ${message.nickname} (${message.date})`,
+    t.checkCheckFor(lang, message.nickname, message.date),
     '',
-    `🎨 Lucky Colour: ${message.luckyColour.name}`,
-    `🔢 Lucky Number: ${numbers}`,
+    `🎨 ${t.luckyColour(lang)}: ${message.luckyColour.name}`,
+    `🔢 ${t.luckyNumber(lang)}: ${numbers}`,
   ].join('\n')
   const colorPng = generateColorPng(message.luckyColour.hex, 400, 150)
   await sendTelegramPhoto(chatId, colorPng, caption)
@@ -47,7 +60,7 @@ export async function sendDailyCheckCheck(chatId: number, message: DailyMessage)
 
 const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {
   nickname: 'nickname',
-  name: 'legalName',
+  name: 'nickname',
   birthday: 'dateOfBirth',
   birthtime: 'birthTime',
   birthcity: 'birthCity',
@@ -56,9 +69,6 @@ const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {
   delivery: 'deliveryTime',
   timezone: 'timezone',
   language: 'languagePreference',
-  relationship: 'relationshipStatus',
-  focus: 'lifeFocus',
-  inspiration: 'dailyInspiration',
 }
 
 function currentIsoDate(): string {
@@ -85,8 +95,8 @@ function pickOption(answer: string, options: string[]): string | null {
   return options.find((option) => option.toLowerCase() === normalized) ?? null
 }
 
-function getQuestions(flow: BotFlow): QuestionConfig[] {
-  return flow === 'layer2' ? layer2Questions : onboardingQuestions
+function getQuestions(flow: BotFlow, profile: ProfileRecord): QuestionConfig[] {
+  return flow === 'layer2' ? layer2Questions : questionsFor(profile)
 }
 
 function defaultFlowForProfile(profile: ProfileRecord): BotFlow {
@@ -100,50 +110,68 @@ function normalizeQuestionAnswer(
   answer: string,
   profile: ProfileRecord
 ): { ok: true; value: string } | { ok: false; message: string } {
+  const lang = langOf(profile)
   const trimmed = answer.trim()
   if (!trimmed) {
-    return { ok: false, message: 'Please send a value.' }
+    return { ok: false, message: t.pleaseSendValue(lang) }
+  }
+
+  if (question.type === 'language' || question.id === 'languagePreference') {
+    const language = canonicalizeAppLanguage(trimmed)
+    if (!language) {
+      return { ok: false, message: t.chooseOneOf(lang, question.options ?? ['English', '中文']) }
+    }
+    return { ok: true, value: language }
   }
 
   if (question.type === 'select' && question.options) {
     if (question.id === 'deliveryTime') {
       const slot = deliveryLabelToSlot(trimmed)
       if (!slot) {
-        return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
+        return { ok: false, message: t.chooseOneOf(lang, question.options) }
       }
       return { ok: true, value: slot }
     }
-    if (question.id === 'languagePreference') {
-      if (/^(no thanks|no|none|skip)$/i.test(trimmed)) {
-        return { ok: true, value: 'None' }
+
+    if (question.id === 'gender') {
+      const gender = canonicalizeGender(trimmed)
+      if (!gender) {
+        return { ok: false, message: t.chooseOneOf(lang, question.options) }
       }
+      return { ok: true, value: gender }
     }
+
     const option = pickOption(trimmed, question.options)
     if (!option) {
-      return { ok: false, message: `Please choose one of: ${question.options.join(' / ')}` }
-    }
-    if (option === 'No thanks') {
-      return { ok: true, value: 'None' }
+      return { ok: false, message: t.chooseOneOf(lang, question.options) }
     }
     return { ok: true, value: option }
   }
 
-  if ((question.type === 'birthTime') && question.options) {
-    // Accept exact time in HH:MM format or approximate options
+  if (question.type === 'birthTime' && question.options) {
+    if (/^\d{1,2}$/.test(trimmed)) {
+      const hour = Number(trimmed)
+      if (hour >= 0 && hour <= 23) {
+        return { ok: true, value: `${String(hour).padStart(2, '0')}:00` }
+      }
+    }
     if (/^\d{1,2}:\d{2}$/.test(trimmed)) {
       return { ok: true, value: trimmed }
     }
+    const mapped = canonicalizeBirthTimeOption(trimmed)
+    if (mapped) {
+      return { ok: true, value: mapped }
+    }
     const option = pickOption(trimmed, question.options)
     if (!option) {
-      return { ok: false, message: `Enter exact time (HH:MM) or pick: ${question.options.join(' / ')}` }
+      return { ok: false, message: t.birthTimeHint(lang, question.options) }
     }
-    return { ok: true, value: option }
+    return { ok: true, value: canonicalizeBirthTimeOption(option) ?? option }
   }
-
 
   if (question.type === 'date') {
     if (!isValidDate(trimmed)) {
-      return { ok: false, message: 'Please use date format YYYY-MM-DD.' }
+      return { ok: false, message: t.dateFormat(lang) }
     }
     return { ok: true, value: trimmed }
   }
@@ -156,10 +184,10 @@ function normalizeQuestionAnswer(
   }
 
   if (question.type === 'textWithShortcut') {
-    if (trimmed.toLowerCase() === 'same') {
+    if (trimmed.toLowerCase() === 'same' || trimmed === '同' || trimmed === '一样') {
       const fallback = profile.birth_city?.trim()
       if (!fallback) {
-        return { ok: false, message: 'I do not have a birth city yet. Please type your current city.' }
+        return { ok: false, message: t.pleaseSendValue(lang) }
       }
       return { ok: true, value: fallback }
     }
@@ -173,30 +201,34 @@ async function updateProfileFromField(
   field: keyof UserProfile,
   rawValue: string
 ): Promise<{ profile: ProfileRecord; message?: string }> {
-  // Special handling for dailyInspiration toggle
-  if (field === 'dailyInspiration') {
-    const normalized = rawValue.trim().toLowerCase()
-    if (normalized === 'on' || normalized === 'yes' || normalized === 'true') {
-      return { profile: await updateProfile(profile.id, { daily_inspiration: true }) }
-    }
-    if (normalized === 'off' || normalized === 'no' || normalized === 'false') {
-      return { profile: await updateProfile(profile.id, { daily_inspiration: false }) }
-    }
-    return { profile, message: 'Reply "on" or "off".' }
-  }
-
-  const questionLookup = [...onboardingQuestions, ...layer2Questions].find((question) => question.id === field)
+  const questions = [...questionsFor(profile), ...layer2Questions]
+  const questionLookup = questions.find((question) => question.id === field)
   const parsed = questionLookup
     ? normalizeQuestionAnswer(questionLookup, rawValue, profile)
-    : ({ ok: true, value: rawValue.trim() } as const)
+    : field === 'languagePreference'
+      ? (() => {
+          const language = canonicalizeAppLanguage(rawValue)
+          return language
+            ? ({ ok: true, value: language } as const)
+            : ({ ok: false, message: t.chooseOneOf(langOf(profile), ['English', '中文']) } as const)
+        })()
+      : ({ ok: true, value: rawValue.trim() } as const)
 
   if (!parsed.ok) {
     return { profile, message: parsed.message }
   }
 
   const patch: Partial<ProfileRecord> = buildProfilePatch(field, parsed.value)
+  if (field === 'nickname') {
+    patch.legal_name = parsed.value
+  }
+  if (field === 'currentCity') {
+    const detectedTz = inferTimezoneFromCity(parsed.value)
+    if (detectedTz) patch.timezone = detectedTz
+  }
+
   const maybeDelivery = field === 'deliveryTime' ? normalizeDeliveryTime(parsed.value) : normalizeDeliveryTime(profile.delivery_time)
-  const maybeTimeZone = field === 'timezone' ? normalizeTimeZone(parsed.value) : normalizeTimeZone(profile.timezone)
+  const maybeTimeZone = field === 'timezone' ? normalizeTimeZone(parsed.value) : normalizeTimeZone(patch.timezone ?? profile.timezone)
 
   if (profile.onboarding_complete && profile.status === 'active' && !profile.paused_until) {
     patch.next_delivery_at = computeNextDeliveryAt(maybeTimeZone, maybeDelivery)
@@ -214,14 +246,15 @@ async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMes
   }
 
   const userProfile = toUserProfile(profile)
-  const message = await generateDailyMessage(userProfile, date)
+  const recent = await getRecentDailyMessages(profile.id, 30)
+  const message = await generateDailyMessage(userProfile, date, recent)
   await upsertDailyMessage(profile.id, date, message)
   return message
 }
 
 async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
   const flow = state.flow === 'layer2' ? 'layer2' : 'onboarding'
-  const questions = getQuestions(flow)
+  const questions = getQuestions(flow, profile)
   const safeStep = Math.max(0, Math.min(state.step, questions.length - 1))
   const question = questions[safeStep]
 
@@ -231,8 +264,10 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
   }
 
   const patch: Partial<ProfileRecord> = buildProfilePatch(question.id, parsed.value)
+  if (question.id === 'nickname') {
+    patch.legal_name = parsed.value
+  }
 
-  // After current city answer, auto-detect timezone
   if (question.id === 'currentCity') {
     const detectedTz = inferTimezoneFromCity(parsed.value)
     if (detectedTz) {
@@ -245,46 +280,46 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
   const isFinalQuestion = safeStep >= questions.length - 1
   if (!isFinalQuestion) {
     const nextStep = safeStep + 1
+    // After language is set, rebuild question list in that language
+    const nextQuestions = getQuestions(flow, updatedProfile)
     await upsertBotState(profile.id, {
       flow,
       step: nextStep,
       awaiting_field: null,
     })
-    return [formatQuestionPrompt(questions[nextStep], nextStep, questions.length)]
+    return [formatQuestionPrompt(nextQuestions[nextStep], nextStep, nextQuestions.length)]
   }
 
   return await finishOnboarding(updatedProfile, flow)
 }
 
 async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<BotReply[]> {
-  if (flow === 'onboarding') {
-    const timeZone = normalizeTimeZone(profile.timezone)
-    await updateProfile(profile.id, {
-      onboarding_complete: true,
-      delivery_time: 'Morning',
-      daily_inspiration: true,
-      next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
-      status: 'active',
-    })
+  if (flow === 'layer2') {
+    await updateProfile(profile.id, { layer2_complete: true })
     await upsertBotState(profile.id, {
-      flow: 'layer2',
+      flow: 'idle',
       step: 0,
       awaiting_field: null,
     })
-    return [
-      LAYER2_INTRO,
-      formatQuestionPrompt(layer2Questions[0], 0, layer2Questions.length),
-    ]
+    return [t.completion(langOf(profile))]
   }
 
-  // Layer 2 complete
-  await updateProfile(profile.id, { layer2_complete: true })
+  // New flow: finish after 7 questions — skip layer2
+  const timeZone = normalizeTimeZone(profile.timezone)
+  await updateProfile(profile.id, {
+    onboarding_complete: true,
+    layer2_complete: true,
+    delivery_time: 'Morning',
+    daily_inspiration: false,
+    next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
+    status: 'active',
+  })
   await upsertBotState(profile.id, {
     flow: 'idle',
     step: 0,
     awaiting_field: null,
   })
-  return [COMPLETION_MESSAGE]
+  return [t.completion(langOf(profile))]
 }
 
 async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
@@ -297,7 +332,12 @@ async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, te
   await upsertBotState(profile.id, {
     awaiting_field: null,
   })
-  return [`Updated ${field}.`]
+
+  if (field === 'languagePreference') {
+    return [t.languageUpdated(langOf(result.profile))]
+  }
+
+  return [t.updatedField(langOf(result.profile), field)]
 }
 
 async function handleCommand(
@@ -308,6 +348,7 @@ async function handleCommand(
   const [rawCommand, ...rawArgs] = text.trim().split(/\s+/)
   const command = rawCommand.toLowerCase().split('@')[0]
   const args = rawArgs
+  const lang = langOf(profile)
 
   if (state.awaiting_field && command !== '/edit') {
     await upsertBotState(profile.id, { awaiting_field: null })
@@ -327,35 +368,44 @@ async function handleCommand(
       }
 
       if (flow === 'onboarding') {
-        const step = Math.max(0, Math.min(state.step, onboardingQuestions.length - 1))
+        const questions = questionsFor(profile)
+        const step = Math.max(0, Math.min(state.step, questions.length - 1))
         await upsertBotState(profile.id, { flow: 'onboarding', step, awaiting_field: null })
-        const question = onboardingQuestions[step]
+        const question = questions[step]
         if (step === 0) {
-          return [WELCOME_MESSAGE, formatQuestionPrompt(question, step, onboardingQuestions.length)]
+          return [WELCOME_MESSAGE, formatQuestionPrompt(question, step, questions.length)]
         }
-        return ['Welcome back! Let\'s continue where we left off.', formatQuestionPrompt(question, step, onboardingQuestions.length)]
+        return [t.welcomeBack(lang), formatQuestionPrompt(question, step, questions.length)]
       }
 
       if (flow === 'layer2') {
         const step = Math.max(0, Math.min(state.step, layer2Questions.length - 1))
         await upsertBotState(profile.id, { flow: 'layer2', step, awaiting_field: null })
-        return ['Welcome back! Let\'s finish your personalisation.', formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
+        return [LAYER2_INTRO, formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
       }
 
-      return ['Welcome back! Use /today for your daily CheckCheck, /settings to edit profile, or /help for commands.']
+      return [
+        lang === '中文'
+          ? '欢迎回来！输入 /today 查看今日 CheckCheck，/settings 编辑资料，/help 查看指令。'
+          : 'Welcome back! Use /today for your daily CheckCheck, /settings to edit profile, or /help for commands.',
+      ]
     }
 
     case '/help':
-      return [COMMAND_HELP]
+      return [t.help(lang)]
 
     case '/today': {
       if (!profile.onboarding_complete) {
-        const step = Math.max(0, Math.min(state.step, onboardingQuestions.length - 1))
-        const question = onboardingQuestions[step]
-        return ['Please finish onboarding first.', formatQuestionPrompt(question, step, onboardingQuestions.length)]
+        const questions = questionsFor(profile)
+        const step = Math.max(0, Math.min(state.step, questions.length - 1))
+        return [t.finishOnboardingFirst(lang), formatQuestionPrompt(questions[step], step, questions.length)]
       }
       if (profile.status === 'stopped') {
-        return ['Your account is stopped. Use /start to reactivate daily messages.']
+        return [
+          lang === '中文'
+            ? '你的账号已停止推送。输入 /start 重新开启。'
+            : 'Your account is stopped. Use /start to reactivate daily messages.',
+        ]
       }
 
       const message = await getOrCreateTodayMessage(profile)
@@ -364,24 +414,39 @@ async function handleCommand(
 
     case '/regenerate': {
       if (!profile.onboarding_complete) {
-        return ['Please finish onboarding first with /start.']
+        return [t.finishOnboardingFirst(lang)]
       }
       const regenDate = currentIsoDate()
       await deleteDailyMessage(profile.id, regenDate)
       const freshMessage = await getOrCreateTodayMessage(profile)
-      return ['Regenerated your daily CheckCheck:', { type: 'daily', message: freshMessage }]
+      return [
+        lang === '中文' ? '已重新生成今日 CheckCheck：' : 'Regenerated your daily CheckCheck:',
+        { type: 'daily', message: freshMessage },
+      ]
     }
 
     case '/reset': {
-      await updateProfile(profile.id, { onboarding_complete: false, layer2_complete: false })
+      await updateProfile(profile.id, {
+        onboarding_complete: false,
+        layer2_complete: false,
+        language_preference: 'English',
+      })
       await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
-      return ['Onboarding reset! Send /start to go through the setup again.']
+      return [
+        lang === '中文'
+          ? '已重置设置！发送 /start 重新开始。'
+          : 'Onboarding reset! Send /start to go through the setup again.',
+      ]
     }
 
     case '/cosmicid':
     case '/bazi': {
       if (!profile.onboarding_complete) {
-        return ['Please finish onboarding first — I need your birth data to build your Cosmic ID.']
+        return [
+          lang === '中文'
+            ? '请先完成设置 — 我需要你的出生资料来生成宇宙身份证。'
+            : 'Please finish onboarding first — I need your birth data to build your Cosmic ID.',
+        ]
       }
       const userProfile = toUserProfile(profile)
       const chart = calculateChart(userProfile.dateOfBirth, userProfile.birthTime)
@@ -395,7 +460,11 @@ async function handleCommand(
     case '/pause': {
       const days = Number.parseInt(args[0] ?? '', 10)
       if (!Number.isFinite(days) || days < 1 || days > 30) {
-        return ['Please specify days between 1 and 30. Example: /pause 3']
+        return [
+          lang === '中文'
+            ? '请指定 1-30 天。例如：/pause 3'
+            : 'Please specify days between 1 and 30. Example: /pause 3',
+        ]
       }
 
       const pausedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
@@ -403,7 +472,11 @@ async function handleCommand(
         paused_until: pausedUntil,
       })
 
-      return [`Paused for ${days} day${days === 1 ? '' : 's'}. Resume anytime with /resume.\nPaused until: ${updated.paused_until}`]
+      return [
+        lang === '中文'
+          ? `已暂停 ${days} 天。随时可用 /resume 恢复。\n暂停至：${updated.paused_until}`
+          : `Paused for ${days} day${days === 1 ? '' : 's'}. Resume anytime with /resume.\nPaused until: ${updated.paused_until}`,
+      ]
     }
 
     case '/resume': {
@@ -414,14 +487,22 @@ async function handleCommand(
         status: 'active',
         next_delivery_at: computeNextDeliveryAt(timeZone, deliveryTime),
       })
-      return [`Resumed. Next delivery scheduled at ${updated.next_delivery_at}.`]
+      return [
+        lang === '中文'
+          ? `已恢复。下次推送时间：${updated.next_delivery_at}`
+          : `Resumed. Next delivery scheduled at ${updated.next_delivery_at}.`,
+      ]
     }
 
     case '/edit': {
       const fieldArg = (args[0] ?? '').toLowerCase()
       const mapped = EDITABLE_FIELDS[fieldArg]
       if (!fieldArg || !mapped) {
-        return ['Usage: /edit [field]\nEditable fields: ' + Object.keys(EDITABLE_FIELDS).join(', ')]
+        return [
+          lang === '中文'
+            ? `用法：/edit [字段]\n可编辑：${Object.keys(EDITABLE_FIELDS).join(', ')}`
+            : 'Usage: /edit [field]\nEditable fields: ' + Object.keys(EDITABLE_FIELDS).join(', '),
+        ]
       }
       const column = profileFieldToColumn(mapped)
       const currentValue = profile[column]
@@ -429,20 +510,28 @@ async function handleCommand(
         awaiting_field: mapped,
       })
 
-      if (mapped === 'dailyInspiration') {
-        return [`Daily Inspiration is currently: ${currentValue ? 'On' : 'Off'}\nReply "on" or "off".`]
-      }
-
-      return [`Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`]
+      return [
+        lang === '中文'
+          ? `当前 ${fieldArg}：${currentValue ?? '未设置'}\n请发送新的值。`
+          : `Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`,
+      ]
     }
 
     case '/timezone': {
       const timezone = args.join(' ').trim()
       if (!timezone) {
-        return [`Current timezone: ${profile.timezone || 'UTC'}\nUsage: /timezone America/New_York`]
+        return [
+          lang === '中文'
+            ? `当前时区：${profile.timezone || 'UTC'}\n用法：/timezone America/New_York`
+            : `Current timezone: ${profile.timezone || 'UTC'}\nUsage: /timezone America/New_York`,
+        ]
       }
       if (!isValidTimeZone(timezone)) {
-        return ['Invalid timezone. Example: America/New_York']
+        return [
+          lang === '中文'
+            ? '无效时区。例如：America/New_York'
+            : 'Invalid timezone. Example: America/New_York',
+        ]
       }
 
       const deliveryTime = normalizeDeliveryTime(profile.delivery_time)
@@ -452,32 +541,47 @@ async function handleCommand(
           ? computeNextDeliveryAt(timezone, deliveryTime)
           : profile.next_delivery_at,
       })
-      return [`Timezone updated to ${updated.timezone}.`]
+      return [
+        lang === '中文'
+          ? `时区已更新为 ${updated.timezone}。`
+          : `Timezone updated to ${updated.timezone}.`,
+      ]
     }
 
     case '/language': {
-      const provided = args[0]
-      const allowed: Language[] = ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian', 'None']
+      const provided = args.join(' ').trim()
       if (!provided) {
-        return [`Current language: ${profile.language_preference || 'None'}\nAvailable: ${allowed.join(', ')}`]
+        return [
+          lang === '中文'
+            ? `当前语言：${profile.language_preference || 'English'}\n可用：English / 中文`
+            : `Current language: ${profile.language_preference || 'English'}\nAvailable: English / 中文`,
+        ]
       }
 
-      const selected = allowed.find((lang) => lang.toLowerCase() === provided.toLowerCase())
+      const selected = canonicalizeAppLanguage(provided)
       if (!selected) {
-        return [`Unknown language "${provided}". Available: ${allowed.join(', ')}`]
+        return [
+          lang === '中文'
+            ? `未知语言「${provided}」。可用：English / 中文`
+            : `Unknown language "${provided}". Available: English / 中文`,
+        ]
       }
 
-      await updateProfile(profile.id, { language_preference: selected })
-      return [`Language preference updated to ${selected}.`]
+      const updated = await updateProfile(profile.id, { language_preference: selected })
+      return [t.languageUpdated(langOf(updated))]
     }
 
     case '/feedback': {
       const feedback = args.join(' ').trim()
       if (!feedback) {
-        return ['Please include feedback text. Example: /feedback Love the format']
+        return [
+          lang === '中文'
+            ? '请附上反馈内容。例如：/feedback 喜欢这个格式'
+            : 'Please include feedback text. Example: /feedback Love the format',
+        ]
       }
       await insertFeedback(profile.id, feedback)
-      return ['Thanks for the feedback. Saved.']
+      return [lang === '中文' ? '谢谢反馈，已保存。' : 'Thanks for the feedback. Saved.']
     }
 
     case '/stop':
@@ -485,15 +589,22 @@ async function handleCommand(
         status: 'stopped',
         paused_until: null,
       })
-      return ['All automatic messages are stopped. Use /start anytime to reactivate.']
+      return [
+        lang === '中文'
+          ? '已停止所有自动推送。随时可用 /start 重新开启。'
+          : 'All automatic messages are stopped. Use /start anytime to reactivate.',
+      ]
 
     default:
-      return [`Unknown command "${command}". Use /help to see available commands.`]
+      return [
+        lang === '中文'
+          ? `未知指令「${command}」。输入 /help 查看可用指令。`
+          : `Unknown command "${command}". Use /help to see available commands.`,
+      ]
   }
 }
 
 export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ignored?: boolean; duplicate?: boolean; sent: number }> {
-  // Handle inline keyboard callbacks (edit profile buttons)
   if (update.callback_query) {
     const cq = update.callback_query
     if (cq.message?.chat.type !== 'private' || !cq.from) {
@@ -521,11 +632,12 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     const profile = await upsertProfileFromTelegram(cq.from)
     const column = profileFieldToColumn(mapped)
     const currentValue = profile[column]
+    const lang = langOf(profile)
 
     await upsertBotState(profile.id, { awaiting_field: mapped })
     const prompt =
-      mapped === 'dailyInspiration'
-        ? `Daily Inspiration is currently: ${currentValue ? 'On' : 'Off'}\nReply "on" or "off".`
+      lang === '中文'
+        ? `当前 ${fieldArg}：${currentValue ?? '未设置'}\n请发送新的值。`
         : `Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`
 
     await answerCallbackQuery(cq.id)
@@ -563,9 +675,10 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     !profile.onboarding_complete
   ) {
     await upsertBotState(profile.id, { last_command: '/start' })
+    const questions = questionsFor(profile)
     replies = [
       WELCOME_MESSAGE,
-      formatQuestionPrompt(onboardingQuestions[0], 0, onboardingQuestions.length),
+      formatQuestionPrompt(questions[0], 0, questions.length),
     ]
   } else if (state.awaiting_field && !messageText.startsWith('/')) {
     replies = await handleEditValue(profile, state, messageText)
@@ -574,7 +687,11 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
   } else if (state.flow === 'onboarding' || state.flow === 'layer2') {
     replies = await handleOnboardingAnswer(profile, state, messageText)
   } else {
-    replies = ['I only respond to commands that start with /. Use /help for available commands.']
+    replies = [
+      langOf(profile) === '中文'
+        ? '我只响应以 / 开头的指令。输入 /help 查看可用指令。'
+        : 'I only respond to commands that start with /. Use /help for available commands.',
+    ]
   }
 
   const chatId = update.message.chat.id
@@ -584,9 +701,11 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     } else if (reply.type === 'daily') {
       await sendDailyCheckCheck(chatId, reply.message)
     } else if (reply.type === 'settings') {
+      const lang = langOf(reply.profile)
       await sendTelegramMessage(
         chatId,
-        formatSettings(reply.profile) + '\n\nTap a button below to edit:',
+        formatSettings(reply.profile) +
+          (lang === '中文' ? '\n\n点击下方按钮编辑：' : '\n\nTap a button below to edit:'),
         getSettingsEditKeyboard()
       )
     }

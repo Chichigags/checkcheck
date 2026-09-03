@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { UserProfile } from './profile'
-import { onboardingQuestions, layer2Questions } from './profile'
+import { onboardingQuestions, layer2Questions, getOnboardingQuestions } from './profile'
 
 export type {
   BirthTime,
@@ -15,7 +15,7 @@ export type {
   UserProfile,
 } from './profile'
 
-export { onboardingQuestions, layer2Questions }
+export { onboardingQuestions, layer2Questions, getOnboardingQuestions }
 
 interface OnboardingState {
   step: number

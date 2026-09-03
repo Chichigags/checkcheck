@@ -1,6 +1,9 @@
 export type BirthTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening' | 'Night' | 'Unknown' | string
 export type DeliveryTime = 'Morning' | 'Afternoon' | 'Evening'
-export type Language = 'German' | 'Mandarin' | 'Japanese' | 'Spanish' | 'French' | 'Indonesian' | 'None'
+/** UI / message language for the whole CheckCheck experience */
+export type AppLanguage = 'English' | '中文'
+/** @deprecated Kept for older stored payloads; prefer AppLanguage */
+export type Language = AppLanguage | 'German' | 'Mandarin' | 'Japanese' | 'Spanish' | 'French' | 'Indonesian' | 'None'
 export type Gender = 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say'
 export type RelationshipStatus = 'Single' | 'In a relationship' | 'Married' | 'Divorced' | 'Widowed' | "It's complicated" | 'Prefer not to say'
 export type LifeFocus = 'Career' | 'Relationships' | 'Health' | 'Wealth' | 'Personal Growth' | 'Others' | 'Creativity' | 'Spirituality'
@@ -16,7 +19,8 @@ export interface UserProfile {
   deliveryTime: DeliveryTime
   timezone: string
   dailyInspiration: boolean
-  languagePreference: Language
+  /** App UI + daily message language */
+  languagePreference: AppLanguage
   relationshipStatus?: RelationshipStatus
   lifeFocus?: LifeFocus
   hasCompletedLayer2?: boolean
@@ -33,62 +37,108 @@ export interface QuestionConfig {
   shortcutLabel?: string
 }
 
-export const WELCOME_MESSAGE = `Hi there, welcome to CheckCheck — your daily cosmic cheat sheet, blending Chinese BaZi and Western astrology into one punchy message. No fluff, just the good stuff.
+/** Bilingual first question — shown before language is chosen */
+export const LANGUAGE_QUESTION: QuestionConfig = {
+  id: 'languagePreference',
+  question: 'Choose your language / 请选择语言',
+  type: 'language',
+  options: ['English', '中文'],
+}
 
-I just need to know you a bit first. The more accurate, the better your reading — you can always tweak things later.`
+function englishQuestions(): QuestionConfig[] {
+  return [
+    LANGUAGE_QUESTION,
+    {
+      id: 'nickname',
+      question: "What should I call you?\n\nThis is the name I'll use in your daily Check Check.",
+      type: 'text',
+      placeholder: 'Your name',
+    },
+    {
+      id: 'dateOfBirth',
+      question: 'When were you born?\n\nPlease use the Gregorian calendar, not the lunar calendar.\nFormat: YYYY-MM-DD',
+      type: 'date',
+      placeholder: 'YYYY-MM-DD',
+    },
+    {
+      id: 'birthTime',
+      question: 'What time were you born?\n\nYour birth time helps make your BaZi reading more accurate.\nEnter the exact time in 24-hour format (HH or HH:MM), or choose:',
+      type: 'birthTime',
+      options: ['Morning', 'Noon', 'Afternoon', 'Evening', 'Night', "I don't know"],
+    },
+    {
+      id: 'birthCity',
+      question: 'Where were you born?\n\nFormat: City, Country\nExample: Beijing, China',
+      type: 'text',
+      placeholder: 'City, Country',
+    },
+    {
+      id: 'gender',
+      question: "What's your gender?",
+      type: 'select',
+      options: ['Male', 'Female', 'Non-binary', 'Prefer not to say'],
+    },
+    {
+      id: 'currentCity',
+      question: 'Where do you live now?\n\nThis helps Check Check calculate your daily reading based on your current location, local date, and timezone.\n\nFormat: City, Country\nExample: Singapore, Singapore',
+      type: 'text',
+      placeholder: 'City, Country',
+    },
+  ]
+}
 
-export const onboardingQuestions: QuestionConfig[] = [
-  {
-    id: 'legalName',
-    question: "What's your legal full name?",
-    type: 'text',
-    placeholder: 'Enter your legal name',
-  },
-  {
-    id: 'nickname',
-    question: "And what should I call you? This is what I'll use day-to-day.",
-    type: 'text',
-    placeholder: 'Enter your nickname',
-  },
-  {
-    id: 'dateOfBirth',
-    question: "What's your date of birth?\nPlease use the Gregorian calendar (the standard international one, not lunar).\nFormat: YYYY-MM-DD",
-    type: 'date',
-    placeholder: 'YYYY-MM-DD',
-  },
-  {
-    id: 'birthTime',
-    question: "What time were you born? This helps make your reading more accurate.\nEnter exact time in 24h format (HH:MM), or pick:",
-    type: 'birthTime',
-    options: ['Morning', 'Noon', 'Afternoon', 'Evening', 'Night', 'I don\'t know'],
-  },
-  {
-    id: 'birthCity',
-    question: "Where were you born? Your birthplace helps anchor your chart.\nFormat: City, Country",
-    type: 'text',
-    placeholder: 'City, Country',
-  },
-  {
-    id: 'gender',
-    question: 'Gender?',
-    type: 'select',
-    options: ['Male', 'Female', 'Non-binary', 'Prefer not to say'],
-  },
-  {
-    id: 'currentCity',
-    question: 'Where do you live now?\nFormat: City, Country\ne.g. Singapore, Singapore',
-    type: 'textWithShortcut',
-    placeholder: 'City, Country',
-    shortcutLabel: 'Same',
-  },
-  {
-    id: 'languagePreference',
-    question: 'Almost done! Want a Word of the Day? Pick up a new language, one word at a time 📖',
-    type: 'select',
-    options: ['German', 'Mandarin', 'Japanese', 'Spanish', 'French', 'Indonesian', 'No thanks'],
-  },
-]
+function chineseQuestions(): QuestionConfig[] {
+  return [
+    LANGUAGE_QUESTION,
+    {
+      id: 'nickname',
+      question: '我应该怎么称呼你？\n\n之后每天的 Check Check 都会用这个名字称呼你。',
+      type: 'text',
+      placeholder: '你的称呼',
+    },
+    {
+      id: 'dateOfBirth',
+      question: '你的出生日期是什么？\n\n请使用公历，不要填写农历。\n格式：YYYY-MM-DD',
+      type: 'date',
+      placeholder: 'YYYY-MM-DD',
+    },
+    {
+      id: 'birthTime',
+      question: '你是什么时间出生的？\n\n准确的出生时间可以帮助我们更准确地计算你的八字。\n请输入 24 小时制的准确时间（HH 或 HH:MM），或者选择：',
+      type: 'birthTime',
+      options: ['早晨', '中午', '下午', '晚上', '深夜', '不知道'],
+    },
+    {
+      id: 'birthCity',
+      question: '你出生在哪里？\n\n格式：城市，国家\n例如：北京，中国',
+      type: 'text',
+      placeholder: '城市，国家',
+    },
+    {
+      id: 'gender',
+      question: '你的性别是？',
+      type: 'select',
+      options: ['男', '女', '非二元性别', '不愿透露'],
+    },
+    {
+      id: 'currentCity',
+      question: '你现在居住在哪个城市？\n\n我们会根据你当前所在地的日期、时间和时区来计算每天的 Check Check。\n\n格式：城市，国家\n例如：新加坡，新加坡',
+      type: 'text',
+      placeholder: '城市，国家',
+    },
+  ]
+}
 
+/** Full 7-question onboarding, localized after language is known */
+export function getOnboardingQuestions(language?: AppLanguage | string | null): QuestionConfig[] {
+  if (language === '中文') return chineseQuestions()
+  return englishQuestions()
+}
+
+/** Default export for web store / early boot before language is chosen */
+export const onboardingQuestions: QuestionConfig[] = englishQuestions()
+
+/** Layer 2 kept for legacy profiles mid-flow; not part of new onboarding */
 export const layer2Questions: QuestionConfig[] = [
   {
     id: 'relationshipStatus',
@@ -104,13 +154,20 @@ export const layer2Questions: QuestionConfig[] = [
   },
 ]
 
+export const WELCOME_MESSAGE = `Hi there / 你好
+
+Welcome to CheckCheck — your daily cosmic cheat sheet.
+欢迎来到 CheckCheck — 你的每日宇宙小抄。
+
+First, pick a language.`
+
 export const LAYER2_INTRO = "Nice — core onboarding done! Just 2 more quick ones to make your readings even more personal."
 
-export const COMPLETION_MESSAGE = `You're all set — the cosmos is now calibrated to you 🎉
+export const COMPLETION_MESSAGE = `You're all set ✨
 
-Type /cosmicid to see your personal BaZi & astrology chart, or /today to get your first reading now.
+Your first Check Check is ready.
 
-Your daily CheckCheck drops tomorrow morning — enjoy the ride 🚀`
+Type /today for today's reading, or /help to see all commands.`
 
 export const DELIVERY_TIME_LABELS: Record<DeliveryTime, string> = {
   Morning: '8:00 AM',
@@ -126,3 +183,49 @@ export function deliveryLabelToSlot(label: string): DeliveryTime | null {
   return null
 }
 
+/** Map localized onboarding answers to canonical stored values */
+export function canonicalizeGender(value: string): Gender | null {
+  const v = value.trim().toLowerCase()
+  const map: Record<string, Gender> = {
+    male: 'Male',
+    female: 'Female',
+    'non-binary': 'Non-binary',
+    nonbinary: 'Non-binary',
+    'prefer not to say': 'Prefer not to say',
+    '男': 'Male',
+    '女': 'Female',
+    '非二元性别': 'Non-binary',
+    '不愿透露': 'Prefer not to say',
+  }
+  return map[v] ?? map[value.trim()] ?? null
+}
+
+export function canonicalizeBirthTimeOption(value: string): string | null {
+  const v = value.trim().toLowerCase()
+  const map: Record<string, string> = {
+    morning: 'Morning',
+    noon: 'Noon',
+    afternoon: 'Afternoon',
+    evening: 'Evening',
+    night: 'Night',
+    "i don't know": 'Unknown',
+    "i dont know": 'Unknown',
+    unknown: 'Unknown',
+    '早晨': 'Morning',
+    '中午': 'Noon',
+    '下午': 'Afternoon',
+    '晚上': 'Evening',
+    '深夜': 'Night',
+    '不知道': 'Unknown',
+  }
+  return map[v] ?? map[value.trim()] ?? null
+}
+
+export function canonicalizeAppLanguage(value: string): AppLanguage | null {
+  const v = value.trim().toLowerCase()
+  if (v === 'english' || v === 'en') return 'English'
+  if (v === '中文' || v === 'zh' || v === 'chinese' || v === 'cn') return '中文'
+  if (value.trim() === '中文') return '中文'
+  if (value.trim() === 'English') return 'English'
+  return null
+}

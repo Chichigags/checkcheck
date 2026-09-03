@@ -1,81 +1,133 @@
 import { buildAstroContext } from '@/lib/astrology'
 import { buildDailyContext, calculateChart } from '@/lib/bazi'
-import type { DailyMessage, DailyWord, TriggeredModule } from '@/lib/generate-mock-message'
+import type { DailyMessage, DailyModule, MessageFormat, ModuleType } from '@/lib/generate-mock-message'
 import { generateMockMessage } from '@/lib/generate-mock-message'
+import { isChinese, normalizeAppLanguage } from '@/lib/i18n'
 import type { UserProfile } from '@/lib/profile'
 import { chatCompletion } from './openrouter'
+import type { DailyMessageRecord } from './types'
+import { fetchLocalWeatherForecast } from './weather'
 
-function buildSystemPrompt(wantInspiration: boolean, wantWord: boolean): string {
-  const inspirationField = wantInspiration
-    ? `  "dailyInspiration": "A short, meaningful quote or proverb to start the day — can be from any culture, era, or thinker. Keep it to 1-2 sentences max.",\n`
-    : ''
+const MODULE_TYPES: ModuleType[] = [
+  'keyword',
+  'worth_doing',
+  'not_to_do',
+  'do_dont',
+  'work',
+  'relationship',
+  'social',
+  'spending',
+  'emotional',
+  'social_vs_solo',
+  'action_mode',
+  'best_window',
+  'hard_window',
+  'what_to_wear',
+  'what_to_eat',
+  'one_sentence',
+  'small_challenge',
+]
 
-  const wordField = wantWord
-    ? `  "dailyWord": {
-    "language": "the user's chosen language",
-    "word": "a beautiful/useful word in that language",
-    "translation": "english meaning",
-    "pronunciation": "phonetic guide"
-  }\n`
-    : ''
+const MESSAGE_FORMATS: MessageFormat[] = [
+  'keyword',
+  'do_dont',
+  'one_line',
+  'time_of_day',
+  'main_watch',
+  'one_thing',
+  'one_avoid',
+  'workday',
+  'weekend',
+  'social_energy',
+  'start_pause_finish',
+]
 
-  const inspirationRule = wantInspiration
-    ? '- dailyInspiration: pick a quote that connects to the day\'s theme or the user\'s life focus. Vary sources — mix Eastern philosophy, Western literature, modern thinkers, proverbs.\n'
-    : ''
-
-  const wordRule = wantWord
-    ? '- dailyWord: only include if the user has a language preference that is not "None". Pick a word that connects to the day\'s theme.\n'
-    : ''
-
-  return `You are CheckCheck, a warm and witty daily insights companion. You create personalized daily readings grounded in real Chinese BaZi (八字) calculations and Western astrology data, delivered as practical, punchy advice.
-
-IMPORTANT: You will receive COMPUTED data from both systems — BaZi (Four Pillars, Day Master, element interactions, clashes, harmonies) and Western astrology (Sun sign, Moon phase, Sun transit, element dynamics). These are calculated from the user's actual birth data and today's date. Use them as the foundation for your reading. Reference specific elements, interactions, moon phase energy, and sign dynamics when relevant. Do NOT invent data — only interpret what is provided.
-
-Your tone is: friendly, playful, insightful, concise. Like a smart friend who reads horoscopes ironically but still finds wisdom in them.
-
-You MUST respond with valid JSON matching this exact schema:
-
-{
-  "todayVibe": "A short punchy one-liner capturing today's energy (e.g. 'Trust the slow build — it's working.')",
-  "luckyColour": {
-    "name": "A creative colour name (e.g. 'Midnight Coral', 'Forest Sage')",
-    "hex": "#RRGGBB hex code"
-  },
-  "luckyNumber": [7, 23],
-  "dailyLuck": "1-2 sentences of personalized positive insight for the day",
-  "watchOut": "1-2 sentences about something to be mindful of today",
-  "dailyFun": "1 sentence that's funny, quirky, or uplifting — like a fortune cookie with personality",
-${inspirationField}  "triggeredModules": [
-    {
-      "type": "romance|career|conflict|lunar|transit",
-      "title": "Short catchy title (2-4 words)",
-      "message": "1-2 sentences of personalized advice",
-      "phase": "only if type is lunar — e.g. 'Waxing Crescent'",
-      "planet": "only if type is transit — e.g. 'Mercury'"
-    }
-  ],
-${wordField}}
-
-Rules:
-- todayVibe: a short, catchy one-liner — think motto of the day, grounded in the BaZi/astrology context.
-- luckyNumber: pick 2 numbers (1-99) that feel thematically connected to the day's energy.
-- triggeredModules: include 1-2 modules. Pick types relevant to the user's life focus and situation.
-- For "lunar" type modules, always include "phase". For "transit" type, always include "planet".
-- For other module types (romance, career, conflict), do NOT include "phase" or "planet".
-${inspirationRule}${wordRule}- Make content feel personal using the user's name, life situation, and preferences.
-- Vary the lucky colour creatively — don't repeat common colours.
-- The dailyFun should genuinely make someone smile.
-- Do NOT be generic. Reference specific details from the user's profile.
-- Keep each field concise — this is read in a Telegram chat.`
+function dayOfWeek(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
 }
 
-function buildUserPrompt(profile: UserProfile, date: string): string {
+function summarizeHistory(records: DailyMessageRecord[]): string {
+  if (!records.length) return 'No recent messages.'
+
+  return records
+    .slice(0, 30)
+    .map((record) => {
+      const p = record.payload as Partial<DailyMessage> | null
+      const format = p?.format ?? 'legacy'
+      const topics = (p?.focusTopics ?? []).join(', ') || 'n/a'
+      const modules = (p?.modules ?? p?.triggeredModules ?? [])
+        .map((m) => ('type' in m ? m.type : ''))
+        .filter(Boolean)
+        .join(', ')
+      const headline = p?.headline || p?.todayVibe || p?.dailyLuck || ''
+      return `- ${record.message_date} | format=${format} | topics=${topics} | modules=${modules} | headline="${String(headline).slice(0, 80)}"`
+    })
+    .join('\n')
+}
+
+function buildSystemPrompt(language: ReturnType<typeof normalizeAppLanguage>): string {
+  const langLine =
+    language === '中文'
+      ? 'Write EVERY user-facing string in Simplified Chinese (中文). Titles and messages must be Chinese.'
+      : 'Write EVERY user-facing string in English.'
+
+  return `You are CheckCheck — a practical daily companion grounded in real Chinese BaZi (八字) calculations.
+
+NON-NEGOTIABLE RULES:
+1. NEVER invent advice just to sound interesting. Every recommendation, warning, timing tip, lucky color, lucky number, or theme MUST be derived from the provided BaZi context, birth data, current city/timezone, and the reading date.
+2. Variety comes from how you interpret and present the REAL reading — not from making things up.
+3. If the chart does not support a strong conclusion, say so. Ordinary / neutral days are OK and preferred over fake excitement.
+4. Forbidden hype unless strongly supported: "major opportunity", "you will meet an important person", "wealth energy is very strong".
+5. Product tone: not "here is your fortune" — instead "here is how to move through today a little more smoothly."
+6. ${langLine}
+
+PROCESS (in order):
+A. Interpret the computed BaZi signals for today (Day Master interaction, clashes, harmonies, element balance, month energy).
+B. Decide if today is strong, mixed, or neutral.
+C. Choose a message format that fits the real reading (and avoid recently used formats when accuracy allows).
+D. Select 2–4 modules that the reading genuinely supports. Do NOT force career/wealth/love/health every day.
+E. Lucky colour + lucky number are a small closing ritual — still thematically grounded, not random decoration.
+F. If weather data is provided and you include wear / outdoor / weather-sensitive advice, ALIGN with the forecast. Do not suggest light clothing on a cold rainy day.
+
+Available formats: ${MESSAGE_FORMATS.join(', ')}
+Available module types: ${MODULE_TYPES.join(', ')}
+
+Respond with valid JSON only:
+{
+  "format": "one of the formats above",
+  "isNeutralDay": true/false,
+  "focusTopics": ["short topic tags used for anti-repetition, e.g. steady, finish, solo"],
+  "headline": "opening line framing the day",
+  "body": "optional 1-2 sentence support; omit or empty if not needed",
+  "modules": [
+    { "type": "module type", "title": "short title", "message": "1-2 sentences of practical guidance" }
+  ],
+  "luckyColour": { "name": "colour name", "hex": "#RRGGBB" },
+  "luckyNumber": [n1, n2]
+}
+
+Rules for modules:
+- Include only modules supported by today's signals (typically 2–4).
+- Prefer practical guidance: what is worth doing, what to avoid, action vs wait, social vs solo, time windows, emotional/work/money reminders WHEN supported.
+- what_to_wear / what_to_eat only when chart + (if present) weather support them.
+- Do not repeat the same module type inside one message.
+- Keep Telegram-friendly length.`
+}
+
+function buildUserPrompt(
+  profile: UserProfile,
+  date: string,
+  historySummary: string,
+  weatherSummary: string | null
+): string {
   const chart = calculateChart(profile.dateOfBirth, profile.birthTime)
   const baziContext = buildDailyContext(chart, date)
   const astroContext = buildAstroContext(profile.dateOfBirth, date)
+  const language = normalizeAppLanguage(profile.languagePreference)
+  const weekday = dayOfWeek(date)
 
   const parts = [
-    `Generate a CheckCheck daily reading for ${date}.`,
+    `Generate a CheckCheck daily reading for ${date} (${weekday}).`,
     '',
     'User profile:',
     `- Name: ${profile.nickname || profile.legalName}`,
@@ -84,114 +136,140 @@ function buildUserPrompt(profile: UserProfile, date: string): string {
     `- Birth city: ${profile.birthCity}`,
     `- Gender: ${profile.gender}`,
     `- Current city: ${profile.currentCity || 'Not set'}`,
+    `- Timezone: ${profile.timezone || 'UTC'}`,
+    `- App language: ${language}`,
   ]
 
-  if (profile.relationshipStatus) {
-    parts.push(`- Relationship: ${profile.relationshipStatus}`)
-  }
-  if (profile.lifeFocus) {
-    parts.push(`- Life focus: ${profile.lifeFocus}`)
-  }
+  if (profile.relationshipStatus) parts.push(`- Relationship: ${profile.relationshipStatus}`)
+  if (profile.lifeFocus) parts.push(`- Life focus: ${profile.lifeFocus}`)
 
-  if (profile.dailyInspiration) {
-    parts.push('- Wants daily inspiration quote: Yes')
-  }
+  parts.push(
+    '',
+    baziContext,
+    '',
+    astroContext,
+    '',
+    '=== Recent message history (avoid obvious repetition of format/topics/wording when accuracy allows) ===',
+    historySummary,
+    ''
+  )
 
-  if (profile.languagePreference && profile.languagePreference !== 'None') {
-    parts.push(`- Learning language: ${profile.languagePreference}`)
+  if (weatherSummary) {
+    parts.push(
+      '=== Local weather forecast (use if wear / outdoor / weather-sensitive advice appears) ===',
+      weatherSummary,
+      ''
+    )
   } else {
-    parts.push('- Language preference: None (skip dailyWord)')
+    parts.push(
+      '=== Local weather ===',
+      'Unavailable. Avoid specific weather claims. Prefer chart-only wear advice or skip wear modules.',
+      ''
+    )
   }
 
-  parts.push('', baziContext, '', astroContext, '', 'Respond with JSON only. No markdown, no code fences, no explanation.')
+  parts.push(
+    'Remember: accuracy over excitement. Neutral days should sound neutral.',
+    'Respond with JSON only. No markdown, no code fences, no explanation.'
+  )
 
   return parts.join('\n')
 }
 
-function parseModules(raw: unknown[]): TriggeredModule[] {
+function parseModules(raw: unknown): DailyModule[] {
   if (!Array.isArray(raw)) return []
-  const modules: TriggeredModule[] = []
+  const modules: DailyModule[] = []
+  const seen = new Set<string>()
 
-  for (const item of raw.slice(0, 2)) {
+  for (const item of raw.slice(0, 5)) {
     if (!item || typeof item !== 'object') continue
     const m = item as Record<string, unknown>
-    const type = String(m.type ?? '')
-    const title = String(m.title ?? '')
-    const message = String(m.message ?? '')
-    if (!type || !title || !message) continue
-
-    switch (type) {
-      case 'lunar':
-        modules.push({ type: 'lunar', title, message, phase: String(m.phase ?? 'Unknown') })
-        break
-      case 'transit':
-        modules.push({ type: 'transit', title, message, planet: String(m.planet ?? 'Unknown') })
-        break
-      case 'romance':
-      case 'career':
-      case 'conflict':
-        modules.push({ type, title, message })
-        break
-    }
+    const type = String(m.type ?? '') as ModuleType
+    const title = String(m.title ?? '').trim()
+    const message = String(m.message ?? '').trim()
+    if (!MODULE_TYPES.includes(type) || !title || !message || seen.has(type)) continue
+    seen.add(type)
+    modules.push({ type, title, message })
   }
 
   return modules
 }
 
-function parseDailyWord(raw: unknown, expectedLanguage: string): DailyWord | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const w = raw as Record<string, unknown>
-  const word = String(w.word ?? '').trim()
-  const translation = String(w.translation ?? '').trim()
-  if (!word || !translation) return undefined
-
-  return {
-    language: expectedLanguage as DailyWord['language'],
-    word,
-    translation,
-    pronunciation: w.pronunciation ? String(w.pronunciation) : undefined,
-  }
-}
-
 function parseLlmResponse(raw: string, profile: UserProfile, date: string): DailyMessage {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   const parsed = JSON.parse(cleaned) as Record<string, unknown>
+  const language = normalizeAppLanguage(profile.languagePreference)
 
   const luckyColour = parsed.luckyColour as { name?: string; hex?: string } | undefined
-  const hasLanguage = profile.languagePreference && profile.languagePreference !== 'None'
-
   const rawNumbers = Array.isArray(parsed.luckyNumber) ? parsed.luckyNumber : [7, 23]
   const luckyNumber = rawNumbers.slice(0, 2).map((n: unknown) => Math.max(1, Math.min(99, Number(n) || 1)))
+
+  const formatRaw = String(parsed.format ?? 'one_line') as MessageFormat
+  const format = MESSAGE_FORMATS.includes(formatRaw) ? formatRaw : 'one_line'
+  const headline = String(parsed.headline ?? parsed.todayVibe ?? '').trim()
+  const body = String(parsed.body ?? '').trim()
+  const modules = parseModules(parsed.modules)
+  const focusTopics = Array.isArray(parsed.focusTopics)
+    ? parsed.focusTopics.map((t) => String(t)).filter(Boolean).slice(0, 6)
+    : []
+
+  const fallbackHeadline =
+    language === '中文'
+      ? '今天整体偏平稳，没有特别强的信号。'
+      : 'Today is fairly steady — no especially strong signal.'
 
   return {
     date,
     nickname: profile.nickname || profile.legalName,
-    todayVibe: String(parsed.todayVibe ?? 'Go with the flow today.'),
+    language,
+    format,
+    headline: headline || fallbackHeadline,
+    body: body || undefined,
+    modules:
+      modules.length > 0
+        ? modules
+        : [
+            {
+              type: 'one_sentence',
+              title: language === '中文' ? '一句话' : 'One line',
+              message:
+                language === '中文'
+                  ? '保持节奏，不必硬推。'
+                  : 'Keep a steady pace — no need to force it.',
+            },
+          ],
     luckyColour: {
-      name: String(luckyColour?.name ?? 'Ocean Blue'),
+      name: String(luckyColour?.name ?? (language === '中文' ? '雾蓝' : 'Ocean Blue')),
       hex: String(luckyColour?.hex ?? '#0077B6'),
     },
     luckyNumber,
-    dailyLuck: String(parsed.dailyLuck ?? ''),
-    watchOut: String(parsed.watchOut ?? ''),
-    dailyFun: String(parsed.dailyFun ?? ''),
-    dailyInspiration: profile.dailyInspiration && parsed.dailyInspiration
-      ? String(parsed.dailyInspiration)
-      : undefined,
-    triggeredModules: parseModules(parsed.triggeredModules as unknown[]),
-    dailyWord: hasLanguage ? parseDailyWord(parsed.dailyWord, profile.languagePreference) : undefined,
+    isNeutralDay: Boolean(parsed.isNeutralDay),
+    focusTopics,
+    todayVibe: headline || fallbackHeadline,
   }
 }
 
-export async function generateDailyMessage(profile: UserProfile, date: string): Promise<DailyMessage> {
+export async function generateDailyMessage(
+  profile: UserProfile,
+  date: string,
+  recentHistory: DailyMessageRecord[] = []
+): Promise<DailyMessage> {
   try {
-    const wantInspiration = profile.dailyInspiration ?? false
-    const wantWord = !!(profile.languagePreference && profile.languagePreference !== 'None')
+    const language = normalizeAppLanguage(profile.languagePreference)
+    const weather = profile.currentCity
+      ? await fetchLocalWeatherForecast(profile.currentCity, date, isChinese(language) ? 'zh' : 'en')
+      : null
 
     const response = await chatCompletion([
-      { role: 'system', content: buildSystemPrompt(wantInspiration, wantWord) },
-      { role: 'user', content: buildUserPrompt(profile, date) },
-    ])
+      { role: 'system', content: buildSystemPrompt(language) },
+      {
+        role: 'user',
+        content: buildUserPrompt(profile, date, summarizeHistory(recentHistory), weather?.summary ?? null),
+      },
+    ], {
+      temperature: 0.75,
+      maxTokens: 1400,
+    })
 
     return parseLlmResponse(response, profile, date)
   } catch (error) {
