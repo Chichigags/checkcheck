@@ -152,7 +152,40 @@ export async function upsertDailyMessage(profileId: string, date: string, payloa
       sent_at: new Date().toISOString(),
     },
   })
-  return rows[0]
+  const row = Array.isArray(rows) ? rows[0] : undefined
+  if (!row) {
+    throw new Error(`daily_messages upsert returned no row for ${profileId} ${date}`)
+  }
+  return row
+}
+
+/**
+ * Atomically claim today's message slot so concurrent /today or cron
+ * calls cannot generate two different readings for the same day.
+ * Returns 'won' if this caller should generate, 'exists' if another
+ * row already holds the slot.
+ */
+export async function claimDailyMessageSlot(
+  profileId: string,
+  date: string
+): Promise<'won' | 'exists'> {
+  const rows = await supabaseRestRequest<DailyMessageRecord[]>({
+    method: 'POST',
+    path: tablePath('daily_messages'),
+    query: {
+      on_conflict: 'profile_id,message_date',
+      select: '*',
+    },
+    prefer: 'resolution=ignore-duplicates,return=representation',
+    body: {
+      profile_id: profileId,
+      message_date: date,
+      payload: { status: 'generating' },
+      sent_at: new Date().toISOString(),
+    },
+  })
+  if (Array.isArray(rows) && rows.length > 0) return 'won'
+  return 'exists'
 }
 
 export async function deleteDailyMessage(profileId: string, date: string): Promise<void> {

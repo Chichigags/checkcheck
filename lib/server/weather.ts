@@ -28,6 +28,16 @@ function weatherCodeLabel(code: number | null, lang: 'en' | 'zh'): string {
  * Free Open-Meteo geocoding + forecast. No API key required.
  * Used when the daily reading may include wear / outdoor / weather-sensitive advice.
  */
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { cache: 'no-store', signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function fetchLocalWeatherForecast(
   cityCountry: string,
   date: string,
@@ -43,7 +53,8 @@ export async function fetchLocalWeatherForecast(
     geoUrl.searchParams.set('language', lang === 'zh' ? 'zh' : 'en')
     geoUrl.searchParams.set('format', 'json')
 
-    const geoRes = await fetch(geoUrl.toString(), { cache: 'no-store' })
+    // Keep weather optional and fast — never block the reading for long.
+    const geoRes = await fetchWithTimeout(geoUrl.toString(), 2500)
     if (!geoRes.ok) return null
     const geoJson = (await geoRes.json()) as {
       results?: Array<{ name: string; latitude: number; longitude: number; timezone?: string; country?: string }>
@@ -59,7 +70,7 @@ export async function fetchLocalWeatherForecast(
     forecastUrl.searchParams.set('start_date', date)
     forecastUrl.searchParams.set('end_date', date)
 
-    const wxRes = await fetch(forecastUrl.toString(), { cache: 'no-store' })
+    const wxRes = await fetchWithTimeout(forecastUrl.toString(), 2500)
     if (!wxRes.ok) return null
     const wxJson = (await wxRes.json()) as {
       daily?: {

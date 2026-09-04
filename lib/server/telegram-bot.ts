@@ -18,6 +18,7 @@ import { generateDailyMessage } from './generate-daily-message'
 import { generateColorPng } from './color-image'
 import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
+  claimDailyMessageSlot,
   deleteDailyMessage,
   ensureBotState,
   getDailyMessage,
@@ -51,15 +52,22 @@ function questionsFor(profile: ProfileRecord): QuestionConfig[] {
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
   const lang = normalizeAppLanguage(message.language)
   const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
-  const caption = [
-    t.checkCheckFor(lang, message.nickname, message.date),
-    '',
+  const body = formatDailyMessage(message)
+  const ritual = [
     `🎨 ${t.luckyColour(lang)}: ${message.luckyColour.name}`,
     `🔢 ${t.luckyNumber(lang)}: ${numbers}`,
   ].join('\n')
+
+  // One photo (colour ritual) + one text body from the SAME payload.
+  // Caption stays short; full reading is only in the text message.
+  const caption = [
+    t.checkCheckFor(lang, message.nickname, message.date),
+    '',
+    ritual,
+  ].join('\n')
   const colorPng = generateColorPng(message.luckyColour.hex, 400, 150)
   await sendTelegramPhoto(chatId, colorPng, caption)
-  await sendTelegramMessage(chatId, formatDailyMessage(message))
+  await sendTelegramMessage(chatId, `${body}\n\n${ritual}`)
 }
 
 const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {
@@ -242,11 +250,50 @@ async function updateProfileFromField(
   return { profile: updatedProfile }
 }
 
-async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMessage> {
-  const date = currentIsoDate()
+function localIsoDate(timeZone: string): string {
+  const tz = normalizeTimeZone(timeZone)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const y = parts.find((p) => p.type === 'year')?.value ?? '1970'
+  const m = parts.find((p) => p.type === 'month')?.value ?? '01'
+  const d = parts.find((p) => p.type === 'day')?.value ?? '01'
+  return `${y}-${m}-${d}`
+}
+
+function isReadyDailyPayload(payload: unknown): payload is DailyMessage {
+  if (!payload || typeof payload !== 'object') return false
+  const p = payload as Record<string, unknown>
+  if (p.status === 'generating') return false
+  return Boolean(p.luckyColour && (p.headline || p.todayVibe || p.dailyLuck))
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMessage> {
+  const date = localIsoDate(profile.timezone)
   const existing = await getDailyMessage(profile.id, date)
-  if (existing?.payload) {
-    return existing.payload as DailyMessage
+  if (existing && isReadyDailyPayload(existing.payload)) {
+    return existing.payload
+  }
+
+  // Claim the unique (profile, date) slot so concurrent /today + cron
+  // cannot each invent a different reading.
+  const claim = existing?.payload ? 'won' : await claimDailyMessageSlot(profile.id, date)
+  if (claim === 'exists') {
+    for (let i = 0; i < 20; i++) {
+      await sleep(750)
+      const row = await getDailyMessage(profile.id, date)
+      if (row && isReadyDailyPayload(row.payload)) {
+        return row.payload
+      }
+    }
+    // Other worker stuck — take over and generate below.
   }
 
   const userProfile = toUserProfile(profile)
@@ -437,20 +484,23 @@ async function handleCommand(
         ]
       }
 
-      const message = await getOrCreateTodayMessage(profile)
-      return [{ type: 'daily', message }]
+      // Ack first so the user isn't staring at silence while the LLM runs.
+      // Generation happens after this text is sent.
+      return [
+        lang === '中文' ? '正在为你生成今日 CheckCheck，稍等几秒…' : 'Generating today’s CheckCheck — one moment…',
+        { type: 'send_first_reading', profile },
+      ]
     }
 
     case '/regenerate': {
       if (!profile.onboarding_complete) {
         return [t.finishOnboardingFirst(lang)]
       }
-      const regenDate = currentIsoDate()
+      const regenDate = localIsoDate(profile.timezone)
       await deleteDailyMessage(profile.id, regenDate)
-      const freshMessage = await getOrCreateTodayMessage(profile)
       return [
-        lang === '中文' ? '已重新生成今日 CheckCheck：' : 'Regenerated your daily CheckCheck:',
-        { type: 'daily', message: freshMessage },
+        lang === '中文' ? '正在重新生成今日 CheckCheck…' : 'Regenerating your daily CheckCheck…',
+        { type: 'send_first_reading', profile },
       ]
     }
 

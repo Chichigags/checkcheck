@@ -267,8 +267,8 @@ export async function generateDailyMessage(
         content: buildUserPrompt(profile, date, summarizeHistory(recentHistory), weather?.summary ?? null),
       },
     ], {
-      temperature: 0.75,
-      maxTokens: 1400,
+      temperature: 0.7,
+      maxTokens: 900,
     })
 
     return parseLlmResponse(response, profile, date)
