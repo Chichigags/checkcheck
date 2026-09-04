@@ -28,6 +28,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
     console.error('Telegram webhook processing error', error)
+    // Best-effort notify the user so onboarding doesn't die silently
+    try {
+      const chatId = update.message?.chat?.id ?? update.callback_query?.message?.chat?.id
+      if (chatId) {
+        const { sendTelegramMessage } = await import('@/lib/server/telegram-client')
+        await sendTelegramMessage(
+          chatId,
+          'Something went wrong on my side. Please try again, or send /start to continue.'
+        )
+      }
+    } catch (notifyError) {
+      console.error('Failed to notify user after webhook error', notifyError)
+    }
     return NextResponse.json({ ok: false, error: 'Processing failed' }, { status: 500 })
   }
 }

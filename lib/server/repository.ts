@@ -74,7 +74,11 @@ export async function updateProfile(profileId: string, patch: Partial<ProfileRec
     prefer: 'return=representation',
     body: patch,
   })
-  return rows[0]
+  const updated = Array.isArray(rows) ? rows[0] : undefined
+  if (!updated) {
+    throw new Error(`Profile update returned no row for ${profileId}`)
+  }
+  return updated
 }
 
 export async function getBotState(profileId: string): Promise<BotStateRecord | null> {

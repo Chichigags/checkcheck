@@ -189,7 +189,7 @@ function parseModules(raw: unknown): DailyModule[] {
     const message = String(m.message ?? '').trim()
     if (!MODULE_TYPES.includes(type) || !title || !message || seen.has(type)) continue
     seen.add(type)
-    modules.push({ type, title, message })
+        modules.push({ type, title, message })
   }
 
   return modules

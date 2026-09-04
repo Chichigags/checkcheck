@@ -34,7 +34,11 @@ import { formatDailyMessage, formatQuestionPrompt, formatSettings, getSettingsEd
 import { answerCallbackQuery, sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
 import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './types'
 
-type BotReply = string | { type: 'daily'; message: DailyMessage } | { type: 'settings'; profile: ProfileRecord }
+type BotReply =
+  | string
+  | { type: 'daily'; message: DailyMessage }
+  | { type: 'settings'; profile: ProfileRecord }
+  | { type: 'send_first_reading'; profile: ProfileRecord }
 
 function langOf(profile: ProfileRecord): AppLanguage {
   return normalizeAppLanguage(profile.language_preference)
@@ -269,7 +273,10 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
   }
 
   if (question.id === 'currentCity') {
-    const detectedTz = inferTimezoneFromCity(parsed.value)
+    // Accept "City, Country" or Chinese "城市，国家"
+    const normalizedCity = parsed.value.replace(/，/g, ',').trim()
+    patch.current_city = normalizedCity
+    const detectedTz = inferTimezoneFromCity(normalizedCity)
     if (detectedTz) {
       patch.timezone = detectedTz
     }
@@ -294,32 +301,54 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
 }
 
 async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<BotReply[]> {
+  const lang = langOf(profile)
+
   if (flow === 'layer2') {
-    await updateProfile(profile.id, { layer2_complete: true })
+    const updated = await updateProfile(profile.id, { layer2_complete: true })
     await upsertBotState(profile.id, {
       flow: 'idle',
       step: 0,
       awaiting_field: null,
     })
-    return [t.completion(langOf(profile))]
+    return [t.completion(langOf(updated))]
   }
 
-  // New flow: finish after 7 questions — skip layer2
+  // Finish after 7 questions — skip layer2. Mark complete first so the user
+  // always gets the completion line even if first-message generation fails.
   const timeZone = normalizeTimeZone(profile.timezone)
-  await updateProfile(profile.id, {
-    onboarding_complete: true,
-    layer2_complete: true,
-    delivery_time: 'Morning',
-    daily_inspiration: false,
-    next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
-    status: 'active',
-  })
+  let completedProfile: ProfileRecord
+  try {
+    completedProfile = await updateProfile(profile.id, {
+      onboarding_complete: true,
+      layer2_complete: true,
+      delivery_time: 'Morning',
+      daily_inspiration: false,
+      next_delivery_at: computeNextDeliveryAt(timeZone, 'Morning'),
+      status: 'active',
+    })
+  } catch (error) {
+    console.error('finishOnboarding profile update failed:', error)
+    // Minimal fallback — still mark complete without optional fields
+    completedProfile = await updateProfile(profile.id, {
+      onboarding_complete: true,
+      layer2_complete: true,
+      status: 'active',
+    })
+  }
+
   await upsertBotState(profile.id, {
     flow: 'idle',
     step: 0,
     awaiting_field: null,
   })
-  return [t.completion(langOf(profile))]
+
+  const replies: BotReply[] = [t.completion(langOf(completedProfile) || lang)]
+
+  // Defer first reading until after the completion text is sent,
+  // so a slow LLM/weather call cannot block the "you're all set" message.
+  replies.push({ type: 'send_first_reading', profile: completedProfile })
+
+  return replies
 }
 
 async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
@@ -698,8 +727,6 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
   for (const reply of replies) {
     if (typeof reply === 'string') {
       await sendTelegramMessage(chatId, reply)
-    } else if (reply.type === 'daily') {
-      await sendDailyCheckCheck(chatId, reply.message)
     } else if (reply.type === 'settings') {
       const lang = langOf(reply.profile)
       await sendTelegramMessage(
@@ -708,6 +735,22 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
           (lang === '中文' ? '\n\n点击下方按钮编辑：' : '\n\nTap a button below to edit:'),
         getSettingsEditKeyboard()
       )
+    } else if (reply.type === 'daily') {
+      await sendDailyCheckCheck(chatId, reply.message)
+    } else if (reply.type === 'send_first_reading') {
+      try {
+        const message = await getOrCreateTodayMessage(reply.profile)
+        await sendDailyCheckCheck(chatId, message)
+      } catch (error) {
+        console.error('First CheckCheck generation failed after onboarding:', error)
+        const lang = langOf(reply.profile)
+        await sendTelegramMessage(
+          chatId,
+          lang === '中文'
+            ? '第一条内容生成稍慢，你可以稍后再输入 /today 查看。'
+            : 'Your first reading is taking a moment — type /today anytime to get it.'
+        )
+      }
     }
   }
 
