@@ -1,5 +1,5 @@
 import { buildAstroContext } from '@/lib/astrology'
-import { buildDailyContext, calculateChart } from '@/lib/bazi'
+import { buildDailyContext, calculateChart, getDailySignals } from '@/lib/bazi'
 import type { DailyMessage, DailyModule, MessageFormat, ModuleType } from '@/lib/generate-mock-message'
 import { generateMockMessage } from '@/lib/generate-mock-message'
 import { isChinese, normalizeAppLanguage } from '@/lib/i18n'
@@ -50,7 +50,7 @@ function summarizeHistory(records: DailyMessageRecord[]): string {
   if (!records.length) return 'No recent messages.'
 
   return records
-    .slice(0, 30)
+    .slice(0, 14)
     .map((record) => {
       const p = record.payload as Partial<DailyMessage> | null
       const format = p?.format ?? 'legacy'
@@ -74,20 +74,23 @@ function buildSystemPrompt(language: ReturnType<typeof normalizeAppLanguage>): s
   return `You are CheckCheck — a practical daily companion grounded in real Chinese BaZi (八字) calculations.
 
 NON-NEGOTIABLE RULES:
-1. NEVER invent advice just to sound interesting. Every recommendation, warning, timing tip, lucky color, lucky number, or theme MUST be derived from the provided BaZi context, birth data, current city/timezone, and the reading date.
-2. Variety comes from how you interpret and present the REAL reading — not from making things up.
-3. If the chart does not support a strong conclusion, say so. Ordinary / neutral days are OK and preferred over fake excitement.
+1. NEVER invent advice just to sound interesting. Every recommendation must be derived from the provided BaZi context, birth data, current city/timezone, and the reading date.
+2. Variety comes from interpreting TODAY's specific stems/branches/relation — not from making things up, and not from recycling yesterday's wording.
+3. Ordinary / neutral days are OK, but they must still feel SPECIFIC to today's pillar, animal, element interaction, weekday, and any clash/harmony. Forbidden lazy defaults:
+   - repeating "today is steady / no strong signal" day after day
+   - always using the same modules (action_mode + one_sentence)
+   - synonym-swapping the same advice
 4. Forbidden hype unless strongly supported: "major opportunity", "you will meet an important person", "wealth energy is very strong".
-5. Product tone: not "here is your fortune" — instead "here is how to move through today a little more smoothly."
+5. Product tone: "here is how to move through today a little more smoothly."
 6. ${langLine}
 
-PROCESS (in order):
-A. Interpret the computed BaZi signals for today (Day Master interaction, clashes, harmonies, element balance, month energy).
-B. Decide if today is strong, mixed, or neutral.
-C. Choose a message format that fits the real reading (and avoid recently used formats when accuracy allows).
-D. Select 2–4 modules that the reading genuinely supports. Do NOT force career/wealth/love/health every day.
-E. Lucky colour + lucky number are a small closing ritual — still thematically grounded, not random decoration.
-F. If weather data is provided and you include wear / outdoor / weather-sensitive advice, ALIGN with the forecast. Do not suggest light clothing on a cold rainy day.
+PROCESS:
+A. Read today's Day Pillar, Day Master interaction, clashes/harmonies, month energy.
+B. Name what is DISTINCT about today vs a generic quiet day.
+C. Pick a format NOT used in recent history when accuracy allows.
+D. Pick 2–4 modules supported by today's signals — change module types across days.
+E. Lucky colour + number: small closing ritual, thematically tied to today's element/animal when possible.
+F. If weather is provided and you mention wear/outdoor advice, align with it.
 
 Available formats: ${MESSAGE_FORMATS.join(', ')}
 Available module types: ${MODULE_TYPES.join(', ')}
@@ -96,22 +99,15 @@ Respond with valid JSON only:
 {
   "format": "one of the formats above",
   "isNeutralDay": true/false,
-  "focusTopics": ["short topic tags used for anti-repetition, e.g. steady, finish, solo"],
-  "headline": "opening line framing the day",
-  "body": "optional 1-2 sentence support; omit or empty if not needed",
+  "focusTopics": ["short tags"],
+  "headline": "opening line — must mention something concrete from today's BaZi (element, animal, clash/harmony, or relation)",
+  "body": "1-2 sentences of practical support",
   "modules": [
-    { "type": "module type", "title": "short title", "message": "1-2 sentences of practical guidance" }
+    { "type": "module type", "title": "short title", "message": "1-2 sentences" }
   ],
   "luckyColour": { "name": "colour name", "hex": "#RRGGBB" },
   "luckyNumber": [n1, n2]
-}
-
-Rules for modules:
-- Include only modules supported by today's signals (typically 2–4).
-- Prefer practical guidance: what is worth doing, what to avoid, action vs wait, social vs solo, time windows, emotional/work/money reminders WHEN supported.
-- what_to_wear / what_to_eat only when chart + (if present) weather support them.
-- Do not repeat the same module type inside one message.
-- Keep Telegram-friendly length.`
+}`
 }
 
 function buildUserPrompt(
@@ -122,6 +118,7 @@ function buildUserPrompt(
 ): string {
   const chart = calculateChart(profile.dateOfBirth, profile.birthTime)
   const baziContext = buildDailyContext(chart, date)
+  const signals = getDailySignals(chart, date)
   const astroContext = buildAstroContext(profile.dateOfBirth, date)
   const language = normalizeAppLanguage(profile.languagePreference)
   const weekday = dayOfWeek(date)
@@ -147,30 +144,32 @@ function buildUserPrompt(
     '',
     baziContext,
     '',
+    `Quick signals: relation=${signals.relationKind}; todayElement=${signals.todayElement}; animal=${signals.todayAnimal}; clashes=${signals.clashLabels.join('|') || 'none'}; harmonies=${signals.harmonyLabels.join('|') || 'none'}; neutral=${signals.isNeutral}`,
+    '',
     astroContext,
     '',
-    '=== Recent message history (avoid obvious repetition of format/topics/wording when accuracy allows) ===',
+    '=== Recent message history (DO NOT reuse the same headline pattern, module pair, or closing line) ===',
     historySummary,
     ''
   )
 
   if (weatherSummary) {
     parts.push(
-      '=== Local weather forecast (use if wear / outdoor / weather-sensitive advice appears) ===',
+      '=== Local weather forecast ===',
       weatherSummary,
       ''
     )
   } else {
     parts.push(
       '=== Local weather ===',
-      'Unavailable. Avoid specific weather claims. Prefer chart-only wear advice or skip wear modules.',
+      'Unavailable. Skip weather-specific claims.',
       ''
     )
   }
 
   parts.push(
-    'Remember: accuracy over excitement. Neutral days should sound neutral.',
-    'Respond with JSON only. No markdown, no code fences, no explanation.'
+    'Make today feel different from the last 7 days while staying faithful to the BaZi signals.',
+    'Respond with JSON only. No markdown, no code fences.'
   )
 
   return parts.join('\n')
@@ -189,7 +188,7 @@ function parseModules(raw: unknown): DailyModule[] {
     const message = String(m.message ?? '').trim()
     if (!MODULE_TYPES.includes(type) || !title || !message || seen.has(type)) continue
     seen.add(type)
-        modules.push({ type, title, message })
+    modules.push({ type, title, message })
   }
 
   return modules
@@ -213,17 +212,16 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
     ? parsed.focusTopics.map((t) => String(t)).filter(Boolean).slice(0, 6)
     : []
 
-  const fallbackHeadline =
-    language === '中文'
-      ? '今天整体偏平稳，没有特别强的信号。'
-      : 'Today is fairly steady — no especially strong signal.'
+  if (!headline) {
+    throw new Error('LLM JSON missing headline')
+  }
 
   return {
     date,
     nickname: profile.nickname || profile.legalName,
     language,
     format,
-    headline: headline || fallbackHeadline,
+    headline,
     body: body || undefined,
     modules:
       modules.length > 0
@@ -234,8 +232,8 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
               title: language === '中文' ? '一句话' : 'One line',
               message:
                 language === '中文'
-                  ? '保持节奏，不必硬推。'
-                  : 'Keep a steady pace — no need to force it.',
+                  ? '按今天的干支节奏走，比硬推更稳。'
+                  : 'Move with today’s stem/branch pace rather than forcing it.',
             },
           ],
     luckyColour: {
@@ -245,7 +243,8 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
     luckyNumber,
     isNeutralDay: Boolean(parsed.isNeutralDay),
     focusTopics,
-    todayVibe: headline || fallbackHeadline,
+    generatedBy: 'llm',
+    todayVibe: headline,
   }
 }
 
@@ -260,20 +259,23 @@ export async function generateDailyMessage(
       ? await fetchLocalWeatherForecast(profile.currentCity, date, isChinese(language) ? 'zh' : 'en')
       : null
 
-    const response = await chatCompletion([
-      { role: 'system', content: buildSystemPrompt(language) },
+    const response = await chatCompletion(
+      [
+        { role: 'system', content: buildSystemPrompt(language) },
+        {
+          role: 'user',
+          content: buildUserPrompt(profile, date, summarizeHistory(recentHistory), weather?.summary ?? null),
+        },
+      ],
       {
-        role: 'user',
-        content: buildUserPrompt(profile, date, summarizeHistory(recentHistory), weather?.summary ?? null),
-      },
-    ], {
-      temperature: 0.7,
-      maxTokens: 900,
-    })
+        temperature: 0.85,
+        maxTokens: 1000,
+      }
+    )
 
     return parseLlmResponse(response, profile, date)
   } catch (error) {
-    console.error('LLM generation failed, falling back to mock:', error instanceof Error ? error.message : error)
+    console.error('LLM generation failed, falling back to BaZi mock:', error instanceof Error ? error.message : error)
     return generateMockMessage(profile, date)
   }
 }

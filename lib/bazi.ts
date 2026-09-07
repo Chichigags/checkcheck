@@ -220,6 +220,10 @@ function isHarmony(a: number, b: number): boolean {
   return HARMONIES.some(([x, y]) => (x === a && y === b) || (x === b && y === a))
 }
 
+function pillarShort(p: Pillar): string {
+  return `${STEMS[p.stemIndex]}${BRANCHES[p.branchIndex]}`
+}
+
 /**
  * Five Elements relationship between the Day Master and another element.
  * Based on the generating (相生) and controlling (相克) cycles.
@@ -234,8 +238,65 @@ function elementRelation(dm: BaziElement, other: BaziElement): string {
   return 'Authority (官杀) — discipline, external pressure, but also growth'
 }
 
-function pillarShort(p: Pillar): string {
-  return `${STEMS[p.stemIndex]}${BRANCHES[p.branchIndex]}`
+export type DailyRelationKind = 'peer' | 'output' | 'resource' | 'wealth' | 'authority'
+
+export interface DailyBaziSignals {
+  dayMasterElement: BaziElement
+  todayElement: BaziElement
+  todayAnimal: string
+  todayPillar: string
+  relation: string
+  relationKind: DailyRelationKind
+  clashLabels: string[]
+  harmonyLabels: string[]
+  isNeutral: boolean
+  weekday: number // 0=Sun … 6=Sat (UTC noon of date)
+}
+
+function relationKind(dm: BaziElement, other: BaziElement): DailyRelationKind {
+  if (dm === other) return 'peer'
+  const di = EL_ORDER.indexOf(dm)
+  const oi = EL_ORDER.indexOf(other)
+  if ((di + 1) % 5 === oi) return 'output'
+  if ((oi + 1) % 5 === di) return 'resource'
+  if ((di + 2) % 5 === oi) return 'wealth'
+  return 'authority'
+}
+
+/** Structured daily signals for LLM prompts and deterministic fallbacks */
+export function getDailySignals(chart: BaziChart, todayDate: string): DailyBaziSignals {
+  const [y, m, d] = todayDate.split('-').map(Number)
+  const today = calcDayPillar(y, m, d)
+  const dm = chart.day.stemIndex
+  const dmEl = S_EL[dm]
+  const todayEl = S_EL[today.stemIndex]
+
+  const userBranches = [
+    { label: 'Year', index: chart.year.branchIndex },
+    { label: 'Month', index: chart.month.branchIndex },
+    { label: 'Day', index: chart.day.branchIndex },
+  ]
+  if (chart.hour) userBranches.push({ label: 'Hour', index: chart.hour.branchIndex })
+
+  const clashLabels: string[] = []
+  const harmonyLabels: string[] = []
+  for (const ub of userBranches) {
+    if (isClash(today.branchIndex, ub.index)) clashLabels.push(ub.label)
+    if (isHarmony(today.branchIndex, ub.index)) harmonyLabels.push(ub.label)
+  }
+
+  return {
+    dayMasterElement: dmEl,
+    todayElement: todayEl,
+    todayAnimal: ANIMALS[today.branchIndex],
+    todayPillar: pillarShort(today),
+    relation: elementRelation(dmEl, todayEl),
+    relationKind: relationKind(dmEl, todayEl),
+    clashLabels,
+    harmonyLabels,
+    isNeutral: clashLabels.length === 0 && harmonyLabels.length === 0,
+    weekday: new Date(`${todayDate}T12:00:00Z`).getUTCDay(),
+  }
 }
 
 // ── Daily BaZi Context (fed to LLM) ───────────────────────────────
@@ -248,25 +309,8 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
   const monthP = calcMonthPillar(bm, calcYearPillar(by).stemIndex)
 
   const dm = chart.day.stemIndex
-  const rel = elementRelation(S_EL[dm], S_EL[today.stemIndex])
-
-  const userBranches = [
-    { label: 'Year', index: chart.year.branchIndex },
-    { label: 'Month', index: chart.month.branchIndex },
-    { label: 'Day', index: chart.day.branchIndex },
-  ]
-  if (chart.hour) userBranches.push({ label: 'Hour', index: chart.hour.branchIndex })
-
-  const clashes: string[] = []
-  const harmonies: string[] = []
-  for (const ub of userBranches) {
-    if (isClash(today.branchIndex, ub.index)) {
-      clashes.push(`Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) CLASHES with user's ${ub.label} ${BRANCHES[ub.index]} (${ANIMALS[ub.index]}) — tension in ${ub.label.toLowerCase()}-related matters`)
-    }
-    if (isHarmony(today.branchIndex, ub.index)) {
-      harmonies.push(`Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) HARMONIZES with user's ${ub.label} ${BRANCHES[ub.index]} (${ANIMALS[ub.index]}) — smooth energy in ${ub.label.toLowerCase()}-related matters`)
-    }
-  }
+  const signals = getDailySignals(chart, todayDate)
+  const rel = signals.relation
 
   const elements = countElements(chart)
   const elSummary = EL_ORDER.map(el => `${el}: ${elements[el]}`).join(', ')
@@ -281,15 +325,23 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
     `Today → Day Master interaction: ${rel}`,
   ]
 
-  if (clashes.length > 0) {
+  if (signals.clashLabels.length > 0) {
     lines.push('')
-    clashes.forEach(c => lines.push(`⚠️ ${c}`))
+    for (const label of signals.clashLabels) {
+      lines.push(
+        `⚠️ Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) CLASHES with user's ${label} — tension in ${label.toLowerCase()}-related matters`
+      )
+    }
   }
-  if (harmonies.length > 0) {
+  if (signals.harmonyLabels.length > 0) {
     lines.push('')
-    harmonies.forEach(h => lines.push(`✅ ${h}`))
+    for (const label of signals.harmonyLabels) {
+      lines.push(
+        `✅ Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) HARMONIZES with user's ${label} — smooth energy in ${label.toLowerCase()}-related matters`
+      )
+    }
   }
-  if (clashes.length === 0 && harmonies.length === 0) {
+  if (signals.isNeutral) {
     lines.push('No major branch clashes or harmonies today — neutral flow.')
   }
 
