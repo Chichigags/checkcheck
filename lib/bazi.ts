@@ -646,12 +646,13 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
 
 import { formatAstroProfile, getAstroProfile } from './astrology'
 
-export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayDate: string): string {
+export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayDate: string, language?: string): string {
   const astro = getAstroProfile(dateOfBirth, todayDate)
   const { chart, dayMaster, elements } = profile
+  const zh = language === '中文'
 
   const lines = [
-    '🪪 My Cosmic ID',
+    zh ? '🪪 我的八字' : '🪪 My BaZi',
     '',
     // ── Western Astrology ──
     '✦ WESTERN ASTROLOGY',
@@ -696,7 +697,9 @@ export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayD
   }
 
   if (!chart.hour) {
-    lines.push('', '💡 Update your birth time via /settings for a complete chart.')
+    lines.push('', zh
+      ? '💡 可在 /settings 更新出生时间，以生成完整八字。'
+      : '💡 Update your birth time via /settings for a complete chart.')
   }
 
   lines.push('', 'The Day Pillar (⭐) is the core of your chart — your inner self.')

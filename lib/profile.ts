@@ -177,9 +177,9 @@ export const DELIVERY_TIME_LABELS: Record<DeliveryTime, string> = {
 
 export function deliveryLabelToSlot(label: string): DeliveryTime | null {
   const normalized = label.trim().toLowerCase()
-  if (normalized === '8:00 am' || normalized === '8am' || normalized === '08:00' || normalized === '8:00' || normalized === 'morning') return 'Morning'
-  if (normalized === '12:00 pm' || normalized === '12pm' || normalized === '12:00' || normalized === 'noon' || normalized === 'afternoon') return 'Afternoon'
-  if (normalized === '7:00 pm' || normalized === '7pm' || normalized === '19:00' || normalized === 'evening') return 'Evening'
+  if (normalized === '8:00 am' || normalized === '8am' || normalized === '08:00' || normalized === '8:00' || normalized === 'morning' || normalized === '早上' || normalized === '早晨') return 'Morning'
+  if (normalized === '12:00 pm' || normalized === '12pm' || normalized === '12:00' || normalized === 'noon' || normalized === 'afternoon' || normalized === '中午' || normalized === '下午') return 'Afternoon'
+  if (normalized === '7:00 pm' || normalized === '7pm' || normalized === '19:00' || normalized === 'evening' || normalized === '晚上') return 'Evening'
   return null
 }
 

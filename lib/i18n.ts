@@ -31,13 +31,13 @@ I just need to know you a bit first. The more accurate, the better your reading 
 
 你的第一条 Check Check 已经准备好了。
 
-输入 /today 查看今天的内容，或输入 /help 查看全部指令。`
+输入 /today 查看今天的内容。`
     }
     return `You're all set ✨
 
 Your first Check Check is ready.
 
-Type /today for today's reading, or /help to see all commands.`
+Type /today for today's reading.`
   },
 
   welcomeBack(lang: AppLanguage): string {
@@ -116,32 +116,74 @@ Type /today for today's reading, or /help to see all commands.`
     if (isChinese(lang)) {
       return [
         '可用指令：',
-        '/today - 今天的 CheckCheck',
-        '/cosmicid - 查看你的宇宙身份证（八字 + 星象）',
-        '/start - 开始或继续设置',
-        '/settings - 查看并编辑资料',
-        '/reset - 重新设置',
-        '/language English|中文 - 切换语言',
-        '/pause [天数] - 暂停 1-30 天',
-        '/resume - 恢复每日推送',
-        '/feedback [内容] - 发送反馈',
-        '/stop - 停止自动推送',
-        '/help - 显示本列表',
+        '/today — 今日 CheckCheck',
+        '/bazi — 我的八字',
+        '/pause — 暂停每日推送（1–30天）',
+        '/settings — 查看和编辑资料',
+        '',
+        '暂停时请输入 1–30 之间的数字。例如：/pause 3',
+        '到达天数后，每日推送会自动恢复。',
       ].join('\n')
     }
     return [
       'Available commands:',
-      '/today - Get today\'s CheckCheck',
-      '/cosmicid - View your Cosmic ID (BaZi + Astrology)',
-      '/start - Begin or continue onboarding',
-      '/settings - View and edit your profile',
-      '/reset - Redo onboarding from scratch',
-      '/language English|中文 - Change language',
-      '/pause [days] - Pause for 1-30 days',
-      '/resume - Resume daily sends',
-      '/feedback [text] - Send feedback',
-      '/stop - Stop automatic daily messages',
-      '/help - Show this list',
+      '/today — Get today\'s CheckCheck',
+      '/bazi — My BaZi',
+      '/pause — Pause daily sends (1–30 days)',
+      '/settings — View and edit your profile',
+      '',
+      'Enter a number from 1 to 30. Example: /pause 3',
+      'Daily messages will automatically resume after the selected number of days.',
     ].join('\n')
+  },
+
+  pauseNeedDays(lang: AppLanguage): string {
+    if (isChinese(lang)) {
+      return [
+        '请输入 1–30 之间的数字。例如：/pause 3',
+        '',
+        '到达天数后，每日推送会自动恢复。',
+      ].join('\n')
+    }
+    return [
+      'Enter a number from 1 to 30. Example: /pause 3',
+      '',
+      'Daily messages will automatically resume after the selected number of days.',
+    ].join('\n')
+  },
+
+  pauseConfirmed(lang: AppLanguage, days: number, until: string | null): string {
+    if (isChinese(lang)) {
+      return `已暂停 ${days} 天。到达天数后，每日推送会自动恢复。\n暂停至：${until ?? ''}`
+    }
+    return `Paused for ${days} day${days === 1 ? '' : 's'}. Daily messages will automatically resume after that.\nPaused until: ${until ?? ''}`
+  },
+
+  settingsEditHint(lang: AppLanguage): string {
+    return isChinese(lang) ? '点击下方按钮修改：' : 'Tap a button below to edit:'
+  },
+
+  resetStarted(lang: AppLanguage): string {
+    return isChinese(lang)
+      ? '已重新设置资料，我们从第一步开始。'
+      : 'Profile reset. Let’s start from the first step.'
+  },
+
+  unknownCommand(lang: AppLanguage, command: string): string {
+    return isChinese(lang)
+      ? `未知指令「${command}」。请用菜单，或输入 /today、/bazi、/pause、/settings。`
+      : `Unknown command "${command}". Use the menu, or try /today, /bazi, /pause, /settings.`
+  },
+
+  commandsOnly(lang: AppLanguage): string {
+    return isChinese(lang)
+      ? '请使用菜单指令：/today、/bazi、/pause、/settings。'
+      : 'Please use a menu command: /today, /bazi, /pause, /settings.'
+  },
+
+  welcomeBackComplete(lang: AppLanguage): string {
+    return isChinese(lang)
+      ? '欢迎回来！输入 /today 查看今日 CheckCheck，/bazi 查看八字，或 /settings 编辑资料。'
+      : 'Welcome back! Use /today for today’s CheckCheck, /bazi for your chart, or /settings to edit your profile.'
   },
 }

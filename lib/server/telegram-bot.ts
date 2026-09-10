@@ -31,8 +31,8 @@ import {
   upsertProfileFromTelegram,
 } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
-import { formatDailyMessage, formatQuestionPrompt, formatSettings, getSettingsEditKeyboard } from './telegram-format'
-import { answerCallbackQuery, sendTelegramMessage, sendTelegramPhoto } from './telegram-client'
+import { formatDailyMessage, formatEditPrompt, formatQuestionPrompt, formatSettings, getSettingsEditKeyboard, settingsFieldLabel } from './telegram-format'
+import { answerCallbackQuery, sendTelegramMessage, sendTelegramPhoto, setBotCommands, setBotCommandsForChat } from './telegram-client'
 import type { BotFlow, BotStateRecord, ProfileRecord, TelegramUpdate } from './types'
 
 type BotReply =
@@ -47,6 +47,26 @@ function langOf(profile: ProfileRecord): AppLanguage {
 
 function questionsFor(profile: ProfileRecord): QuestionConfig[] {
   return getOnboardingQuestions(langOf(profile))
+}
+
+async function syncChatMenu(profile: ProfileRecord): Promise<void> {
+  try {
+    await setBotCommandsForChat(profile.telegram_user_id, langOf(profile))
+  } catch (error) {
+    console.error('setBotCommandsForChat failed:', error)
+  }
+}
+
+let globalMenuSynced = false
+async function ensureGlobalMenu(): Promise<void> {
+  if (globalMenuSynced) return
+  globalMenuSynced = true
+  try {
+    await setBotCommands()
+  } catch (error) {
+    globalMenuSynced = false
+    console.error('setBotCommands failed:', error)
+  }
 }
 
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
@@ -222,7 +242,13 @@ async function updateProfileFromField(
     return { profile, message: parsed.message }
   }
 
-  const patch: Partial<ProfileRecord> = buildProfilePatch(field, parsed.value)
+  let value = parsed.value
+  if (field === 'deliveryTime') {
+    const slot = deliveryLabelToSlot(String(value))
+    if (slot) value = slot
+  }
+
+  const patch: Partial<ProfileRecord> = buildProfilePatch(field, value)
   if (field === 'nickname') {
     patch.legal_name = parsed.value
   }
@@ -231,8 +257,8 @@ async function updateProfileFromField(
     if (detectedTz) patch.timezone = detectedTz
   }
 
-  const maybeDelivery = field === 'deliveryTime' ? normalizeDeliveryTime(parsed.value) : normalizeDeliveryTime(profile.delivery_time)
-  const maybeTimeZone = field === 'timezone' ? normalizeTimeZone(parsed.value) : normalizeTimeZone(patch.timezone ?? profile.timezone)
+  const maybeDelivery = field === 'deliveryTime' ? normalizeDeliveryTime(value) : normalizeDeliveryTime(profile.delivery_time)
+  const maybeTimeZone = field === 'timezone' ? normalizeTimeZone(value) : normalizeTimeZone(patch.timezone ?? profile.timezone)
 
   if (profile.onboarding_complete && profile.status === 'active' && !profile.paused_until) {
     patch.next_delivery_at = computeNextDeliveryAt(maybeTimeZone, maybeDelivery)
@@ -383,6 +409,8 @@ async function finishOnboarding(profile: ProfileRecord, flow: BotFlow): Promise<
 
   const replies: BotReply[] = [t.completion(langOf(completedProfile) || lang)]
 
+  void syncChatMenu(completedProfile)
+
   // Defer first reading until after the completion text is sent,
   // so a slow LLM/weather call cannot block the "you're all set" message.
   replies.push({ type: 'send_first_reading', profile: completedProfile })
@@ -402,10 +430,22 @@ async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, te
   })
 
   if (field === 'languagePreference') {
+    void syncChatMenu(result.profile)
     return [t.languageUpdated(langOf(result.profile))]
   }
 
-  return [t.updatedField(langOf(result.profile), field)]
+  return [t.updatedField(langOf(result.profile), settingsFieldLabel(String(field), langOf(result.profile)))]
+}
+
+async function resetOnboarding(profile: ProfileRecord): Promise<BotReply[]> {
+  const lang = langOf(profile)
+  await updateProfile(profile.id, {
+    onboarding_complete: false,
+    layer2_complete: false,
+  })
+  await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
+  const questions = getOnboardingQuestions(lang)
+  return [t.resetStarted(lang), formatQuestionPrompt(questions[0], 0, questions.length)]
 }
 
 async function handleCommand(
@@ -452,11 +492,8 @@ async function handleCommand(
         return [LAYER2_INTRO, formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
       }
 
-      return [
-        lang === '中文'
-          ? '欢迎回来！输入 /today 查看今日 CheckCheck，/settings 编辑资料，/help 查看指令。'
-          : 'Welcome back! Use /today for your daily CheckCheck, /settings to edit profile, or /help for commands.',
-      ]
+      void syncChatMenu(profile)
+      return [t.welcomeBackComplete(lang)]
     }
 
     case '/help':
@@ -497,17 +534,7 @@ async function handleCommand(
     }
 
     case '/reset': {
-      await updateProfile(profile.id, {
-        onboarding_complete: false,
-        layer2_complete: false,
-        language_preference: 'English',
-      })
-      await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
-      return [
-        lang === '中文'
-          ? '已重置设置！发送 /start 重新开始。'
-          : 'Onboarding reset! Send /start to go through the setup again.',
-      ]
+      return resetOnboarding(profile)
     }
 
     case '/cosmicid':
@@ -515,14 +542,14 @@ async function handleCommand(
       if (!profile.onboarding_complete) {
         return [
           lang === '中文'
-            ? '请先完成设置 — 我需要你的出生资料来生成宇宙身份证。'
-            : 'Please finish onboarding first — I need your birth data to build your Cosmic ID.',
+            ? '请先完成设置 — 我需要你的出生资料来生成八字。'
+            : 'Please finish onboarding first — I need your birth data to build your BaZi.',
         ]
       }
       const userProfile = toUserProfile(profile)
       const chart = calculateChart(userProfile.dateOfBirth, userProfile.birthTime)
       const baziProfile = getProfile(chart)
-      return [formatCosmicId(baziProfile, userProfile.dateOfBirth, currentIsoDate())]
+      return [formatCosmicId(baziProfile, userProfile.dateOfBirth, currentIsoDate(), lang)]
     }
 
     case '/settings':
@@ -531,11 +558,7 @@ async function handleCommand(
     case '/pause': {
       const days = Number.parseInt(args[0] ?? '', 10)
       if (!Number.isFinite(days) || days < 1 || days > 30) {
-        return [
-          lang === '中文'
-            ? '请指定 1-30 天。例如：/pause 3'
-            : 'Please specify days between 1 and 30. Example: /pause 3',
-        ]
+        return [t.pauseNeedDays(lang)]
       }
 
       const pausedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
@@ -543,11 +566,7 @@ async function handleCommand(
         paused_until: pausedUntil,
       })
 
-      return [
-        lang === '中文'
-          ? `已暂停 ${days} 天。随时可用 /resume 恢复。\n暂停至：${updated.paused_until}`
-          : `Paused for ${days} day${days === 1 ? '' : 's'}. Resume anytime with /resume.\nPaused until: ${updated.paused_until}`,
-      ]
+      return [t.pauseConfirmed(lang, days, updated.paused_until)]
     }
 
     case '/resume': {
@@ -581,11 +600,7 @@ async function handleCommand(
         awaiting_field: mapped,
       })
 
-      return [
-        lang === '中文'
-          ? `当前 ${fieldArg}：${currentValue ?? '未设置'}\n请发送新的值。`
-          : `Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`,
-      ]
+      return [formatEditPrompt(lang, fieldArg, currentValue)]
     }
 
     case '/timezone': {
@@ -639,6 +654,7 @@ async function handleCommand(
       }
 
       const updated = await updateProfile(profile.id, { language_preference: selected })
+      void syncChatMenu(updated)
       return [t.languageUpdated(langOf(updated))]
     }
 
@@ -667,18 +683,16 @@ async function handleCommand(
       ]
 
     default:
-      return [
-        lang === '中文'
-          ? `未知指令「${command}」。输入 /help 查看可用指令。`
-          : `Unknown command "${command}". Use /help to see available commands.`,
-      ]
+      return [t.unknownCommand(lang, command)]
   }
 }
 
 export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ignored?: boolean; duplicate?: boolean; sent: number }> {
+  void ensureGlobalMenu()
   if (update.callback_query) {
     const cq = update.callback_query
-    if (cq.message?.chat.type !== 'private' || !cq.from) {
+    const chat = cq.message
+    if (!chat || chat.chat.type !== 'private' || !cq.from) {
       return { ignored: true, sent: 0 }
     }
 
@@ -687,7 +701,20 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
       return { duplicate: true, sent: 0 }
     }
 
+    const chatId = chat.chat.id
     const data = cq.data ?? ''
+    if (data === 'reset:profile') {
+      const profile = await upsertProfileFromTelegram(cq.from)
+      await answerCallbackQuery(cq.id)
+      const replies = await resetOnboarding(profile)
+      for (const reply of replies) {
+        if (typeof reply === 'string') {
+          await sendTelegramMessage(chatId, reply)
+        }
+      }
+      return { sent: replies.length }
+    }
+
     if (!data.startsWith('edit:')) {
       await answerCallbackQuery(cq.id)
       return { sent: 0 }
@@ -706,13 +733,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     const lang = langOf(profile)
 
     await upsertBotState(profile.id, { awaiting_field: mapped })
-    const prompt =
-      lang === '中文'
-        ? `当前 ${fieldArg}：${currentValue ?? '未设置'}\n请发送新的值。`
-        : `Current ${fieldArg}: ${currentValue ?? 'Not set'}\nSend the new value now.`
-
     await answerCallbackQuery(cq.id)
-    await sendTelegramMessage(cq.message.chat.id, prompt)
+    await sendTelegramMessage(chatId, formatEditPrompt(lang, fieldArg, currentValue))
     return { sent: 1 }
   }
 
@@ -758,11 +780,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
   } else if (state.flow === 'onboarding' || state.flow === 'layer2') {
     replies = await handleOnboardingAnswer(profile, state, messageText)
   } else {
-    replies = [
-      langOf(profile) === '中文'
-        ? '我只响应以 / 开头的指令。输入 /help 查看可用指令。'
-        : 'I only respond to commands that start with /. Use /help for available commands.',
-    ]
+    replies = [t.commandsOnly(langOf(profile))]
   }
 
   const chatId = update.message.chat.id
@@ -773,9 +791,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
       const lang = langOf(reply.profile)
       await sendTelegramMessage(
         chatId,
-        formatSettings(reply.profile) +
-          (lang === '中文' ? '\n\n点击下方按钮编辑：' : '\n\nTap a button below to edit:'),
-        getSettingsEditKeyboard()
+        formatSettings(reply.profile) + '\n\n' + t.settingsEditHint(lang),
+        getSettingsEditKeyboard(lang)
       )
     } else if (reply.type === 'daily') {
       await sendDailyCheckCheck(chatId, reply.message)

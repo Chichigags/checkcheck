@@ -46,21 +46,33 @@ export async function answerCallbackQuery(callbackQueryId: string): Promise<void
   })
 }
 
-const BOT_COMMANDS = [
+const EN_COMMANDS = [
   { command: 'today', description: "Get today's CheckCheck" },
-  { command: 'cosmicid', description: 'View your Cosmic ID (BaZi + Astrology)' },
-  { command: 'start', description: 'Begin or continue onboarding' },
+  { command: 'bazi', description: 'My BaZi' },
+  { command: 'pause', description: 'Pause daily sends (1–30 days)' },
   { command: 'settings', description: 'View and edit your profile' },
-  { command: 'language', description: 'Change app language (English / 中文)' },
-  { command: 'pause', description: 'Pause daily sends (1-30 days)' },
-  { command: 'resume', description: 'Resume daily sends' },
-  { command: 'feedback', description: 'Send feedback' },
-  { command: 'stop', description: 'Stop automatic daily messages' },
-  { command: 'help', description: 'Show command list' },
+]
+
+const ZH_COMMANDS = [
+  { command: 'today', description: '今日 CheckCheck' },
+  { command: 'bazi', description: '我的八字' },
+  { command: 'pause', description: '暂停每日推送（1–30天）' },
+  { command: 'settings', description: '查看和编辑资料' },
 ]
 
 export async function setBotCommands(): Promise<void> {
-  await telegramRequest('setMyCommands', { commands: BOT_COMMANDS })
+  await telegramRequest('deleteMyCommands', {})
+  await telegramRequest('deleteMyCommands', { language_code: 'zh' })
+  await telegramRequest('setMyCommands', { commands: EN_COMMANDS })
+  await telegramRequest('setMyCommands', { commands: ZH_COMMANDS, language_code: 'zh' })
+}
+
+export async function setBotCommandsForChat(chatId: number, language: string): Promise<void> {
+  const commands = language === '中文' ? ZH_COMMANDS : EN_COMMANDS
+  await telegramRequest('setMyCommands', {
+    commands,
+    scope: { type: 'chat', chat_id: chatId },
+  })
 }
 
 export async function sendTelegramPhoto(chatId: number, imageBuffer: Buffer, caption?: string): Promise<void> {
