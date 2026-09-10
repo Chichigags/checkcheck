@@ -49,6 +49,7 @@ const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申',
 const STEM_PY = ['Jiǎ', 'Yǐ', 'Bǐng', 'Dīng', 'Wù', 'Jǐ', 'Gēng', 'Xīn', 'Rén', 'Guǐ']
 const BRANCH_PY = ['Zǐ', 'Chǒu', 'Yín', 'Mǎo', 'Chén', 'Sì', 'Wǔ', 'Wèi', 'Shēn', 'Yǒu', 'Xū', 'Hài']
 const ANIMALS = ['Rat', 'Ox', 'Tiger', 'Rabbit', 'Dragon', 'Snake', 'Horse', 'Goat', 'Monkey', 'Rooster', 'Dog', 'Pig']
+const ANIMALS_ZH = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
 const ANIMAL_EMOJI = ['🐀', '🐂', '🐅', '🐇', '🐉', '🐍', '🐴', '🐐', '🐒', '🐓', '🐕', '🐖']
 
 const S_EL: BaziElement[] = ['Wood', 'Wood', 'Fire', 'Fire', 'Earth', 'Earth', 'Metal', 'Metal', 'Water', 'Water']
@@ -142,6 +143,9 @@ const PILLAR_LIFE_AREA: Record<string, string> = {
 const EL_ORDER: BaziElement[] = ['Wood', 'Fire', 'Earth', 'Metal', 'Water']
 const EL_EMOJI: Record<BaziElement, string> = { Wood: '🪵', Fire: '🔥', Earth: '⛰️', Metal: '🪙', Water: '💧' }
 
+const EL_ZH: Record<BaziElement, string> = { Wood: '木', Fire: '火', Earth: '土', Metal: '金', Water: '水' }
+const POL_ZH: Record<Polarity, string> = { Yang: '阳', Yin: '阴' }
+
 const DM_DESC: string[] = [
   'Like a tall tree — ambitious, pioneering, always growing.',
   'Like a vine — flexible, graceful, quietly resilient.',
@@ -153,6 +157,19 @@ const DM_DESC: string[] = [
   'Like a gemstone — refined, precise, elegantly sharp.',
   'Like the ocean — expansive, wise, endlessly flowing.',
   'Like morning dew — intuitive, sensitive, deeply perceptive.',
+]
+
+const DM_DESC_ZH: string[] = [
+  '像大树一样，有冲劲，喜欢往前走。',
+  '像藤蔓一样，柔软、有韧性。',
+  '像太阳一样，明亮、大方，容易吸引人。',
+  '像烛火一样，温暖、敏锐。',
+  '像山一样，稳、可靠。',
+  '像土壤一样，细致、能滋养身边的人。',
+  '像剑一样，干脆、有原则。',
+  '像宝石一样，讲究、锋利。',
+  '像海一样，开阔、有流动感。',
+  '像晨露一样，敏感、直觉强。',
 ]
 
 // ── Core Math ──────────────────────────────────────────────────────
@@ -645,24 +662,27 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
 // ── Telegram Display Format ────────────────────────────────────────
 
 import { formatAstroProfile, getAstroProfile } from './astrology'
+import { isChinese } from './i18n'
 
 export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayDate: string, language?: string): string {
   const astro = getAstroProfile(dateOfBirth, todayDate)
   const { chart, dayMaster, elements } = profile
-  const zh = language === '中文'
+  const zh = isChinese(language)
+
+  const pillarLabel: Record<string, string> = zh
+    ? { Year: '年柱', Month: '月柱', Day: '日柱', Hour: '时柱' }
+    : { Year: 'Year', Month: 'Month', Day: 'Day', Hour: 'Hour' }
 
   const lines = [
     zh ? '🪪 我的八字' : '🪪 My BaZi',
     '',
-    // ── Western Astrology ──
-    '✦ WESTERN ASTROLOGY',
+    zh ? '✦ 西洋星座' : '✦ WESTERN ASTROLOGY',
     '',
-    formatAstroProfile(astro),
+    formatAstroProfile(astro, language),
     '',
-    // ── Chinese BaZi ──
-    '✦ CHINESE BAZI (八字)',
+    zh ? '✦ 中式八字' : '✦ CHINESE BAZI',
     '',
-    '📜 Four Pillars:',
+    zh ? '📜 四柱：' : '📜 Four Pillars:',
   ]
 
   const pillars: [string, Pillar][] = [
@@ -672,37 +692,50 @@ export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayD
   ]
   if (chart.hour) pillars.push(['Hour', chart.hour])
 
-  for (const [label, p] of pillars) {
-    const star = label === 'Day' ? ' ⭐' : ''
+  for (const [key, p] of pillars) {
+    const star = key === 'Day' ? ' ⭐' : ''
+    const animal = zh ? ANIMALS_ZH[p.branchIndex] : ANIMALS[p.branchIndex]
+    const element = zh ? EL_ZH[S_EL[p.stemIndex]] : S_EL[p.stemIndex]
+    const roman = zh
+      ? ''
+      : ` (${STEM_PY[p.stemIndex]} ${BRANCH_PY[p.branchIndex]})`
     lines.push(
-      `${label}: ${STEMS[p.stemIndex]}${BRANCHES[p.branchIndex]}` +
-      ` (${STEM_PY[p.stemIndex]} ${BRANCH_PY[p.branchIndex]})` +
-      ` — ${S_EL[p.stemIndex]} ${ANIMALS[p.branchIndex]} ${ANIMAL_EMOJI[p.branchIndex]}${star}`
+      `${pillarLabel[key]}: ${STEMS[p.stemIndex]}${BRANCHES[p.branchIndex]}${roman}` +
+      ` — ${element} ${animal} ${ANIMAL_EMOJI[p.branchIndex]}${star}`
     )
   }
 
+  const dmElement = zh ? EL_ZH[dayMaster.element] : dayMaster.element
+  const dmPolarity = zh ? POL_ZH[dayMaster.polarity] : dayMaster.polarity
+  const dmDesc = zh ? DM_DESC_ZH[dayMaster.stemIndex] : dayMaster.description
+
   lines.push(
     '',
-    `${EL_EMOJI[dayMaster.element]} Day Master: ${STEMS[dayMaster.stemIndex]} ${STEM_PY[dayMaster.stemIndex]} — ${dayMaster.polarity} ${dayMaster.element}`,
-    dayMaster.description,
+    zh
+      ? `${EL_EMOJI[dayMaster.element]} 日主：${STEMS[dayMaster.stemIndex]} — ${dmPolarity}${dmElement}`
+      : `${EL_EMOJI[dayMaster.element]} Day Master: ${STEMS[dayMaster.stemIndex]} ${STEM_PY[dayMaster.stemIndex]} — ${dmPolarity} ${dmElement}`,
+    dmDesc,
   )
 
-  lines.push('', '⚖️ Five Elements (BaZi):')
+  lines.push('', zh ? '⚖️ 五行：' : '⚖️ Five Elements:')
   const maxCount = Math.max(...Object.values(elements), 1)
   for (const el of EL_ORDER) {
     const count = elements[el]
     const bars = Math.round((count / maxCount) * 5)
     const bar = '■'.repeat(bars) + '□'.repeat(5 - bars)
-    lines.push(`${EL_EMOJI[el]} ${el}: ${bar} ${count}`)
+    const elName = zh ? EL_ZH[el] : el
+    lines.push(`${EL_EMOJI[el]} ${elName}: ${bar} ${count}`)
   }
 
   if (!chart.hour) {
     lines.push('', zh
-      ? '💡 可在 /settings 更新出生时间，以生成完整八字。'
-      : '💡 Update your birth time via /settings for a complete chart.')
+      ? '💡 可在资料里更新出生时间，以生成完整八字。'
+      : '💡 Update your birth time in Settings for a complete chart.')
   }
 
-  lines.push('', 'The Day Pillar (⭐) is the core of your chart — your inner self.')
+  lines.push('', zh
+    ? '日柱（⭐）是你盘的核心，代表你自己。'
+    : 'The Day Pillar (⭐) is the core of your chart — your inner self.')
 
   return lines.join('\n')
 }

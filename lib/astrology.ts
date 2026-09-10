@@ -5,19 +5,26 @@
 
 export interface ZodiacSign {
   name: string
+  nameZh: string
   symbol: string
   element: string
+  elementZh: string
   modality: string
+  modalityZh: string
   rulingPlanet: string
+  rulingPlanetZh: string
   dateRange: string
   trait: string
+  traitZh: string
 }
 
 export interface MoonPhaseInfo {
   name: string
+  nameZh: string
   emoji: string
   illumination: string
   meaning: string
+  meaningZh: string
 }
 
 export interface AstroProfile {
@@ -29,18 +36,18 @@ export interface AstroProfile {
 // ── Zodiac Signs ───────────────────────────────────────────────────
 
 const ZODIAC: ZodiacSign[] = [
-  { name: 'Aries', symbol: '♈', element: 'Fire', modality: 'Cardinal', rulingPlanet: 'Mars', dateRange: 'Mar 21 – Apr 19', trait: 'Bold, ambitious, and fiercely independent.' },
-  { name: 'Taurus', symbol: '♉', element: 'Earth', modality: 'Fixed', rulingPlanet: 'Venus', dateRange: 'Apr 20 – May 20', trait: 'Grounded, loyal, and drawn to life\'s finer things.' },
-  { name: 'Gemini', symbol: '♊', element: 'Air', modality: 'Mutable', rulingPlanet: 'Mercury', dateRange: 'May 21 – Jun 20', trait: 'Curious, adaptable, and effortlessly social.' },
-  { name: 'Cancer', symbol: '♋', element: 'Water', modality: 'Cardinal', rulingPlanet: 'Moon', dateRange: 'Jun 21 – Jul 22', trait: 'Intuitive, nurturing, and emotionally deep.' },
-  { name: 'Leo', symbol: '♌', element: 'Fire', modality: 'Fixed', rulingPlanet: 'Sun', dateRange: 'Jul 23 – Aug 22', trait: 'Charismatic, creative, and born to shine.' },
-  { name: 'Virgo', symbol: '♍', element: 'Earth', modality: 'Mutable', rulingPlanet: 'Mercury', dateRange: 'Aug 23 – Sep 22', trait: 'Analytical, practical, and quietly brilliant.' },
-  { name: 'Libra', symbol: '♎', element: 'Air', modality: 'Cardinal', rulingPlanet: 'Venus', dateRange: 'Sep 23 – Oct 22', trait: 'Diplomatic, aesthetic, and harmony-seeking.' },
-  { name: 'Scorpio', symbol: '♏', element: 'Water', modality: 'Fixed', rulingPlanet: 'Pluto', dateRange: 'Oct 23 – Nov 21', trait: 'Intense, perceptive, and magnetically powerful.' },
-  { name: 'Sagittarius', symbol: '♐', element: 'Fire', modality: 'Mutable', rulingPlanet: 'Jupiter', dateRange: 'Nov 22 – Dec 21', trait: 'Adventurous, philosophical, and endlessly optimistic.' },
-  { name: 'Capricorn', symbol: '♑', element: 'Earth', modality: 'Cardinal', rulingPlanet: 'Saturn', dateRange: 'Dec 22 – Jan 19', trait: 'Disciplined, strategic, and quietly unstoppable.' },
-  { name: 'Aquarius', symbol: '♒', element: 'Air', modality: 'Fixed', rulingPlanet: 'Uranus', dateRange: 'Jan 20 – Feb 18', trait: 'Visionary, independent, and refreshingly unconventional.' },
-  { name: 'Pisces', symbol: '♓', element: 'Water', modality: 'Mutable', rulingPlanet: 'Neptune', dateRange: 'Feb 19 – Mar 20', trait: 'Dreamy, compassionate, and deeply creative.' },
+  { name: 'Aries', nameZh: '白羊座', symbol: '♈', element: 'Fire', elementZh: '火', modality: 'Cardinal', modalityZh: '基本', rulingPlanet: 'Mars', rulingPlanetZh: '火星', dateRange: 'Mar 21 – Apr 19', trait: 'Bold, ambitious, and fiercely independent.', traitZh: '大胆、有冲劲，很独立。' },
+  { name: 'Taurus', nameZh: '金牛座', symbol: '♉', element: 'Earth', elementZh: '土', modality: 'Fixed', modalityZh: '固定', rulingPlanet: 'Venus', rulingPlanetZh: '金星', dateRange: 'Apr 20 – May 20', trait: 'Grounded, loyal, and drawn to life\'s finer things.', traitZh: '踏实、忠诚，喜欢舒服和美好的东西。' },
+  { name: 'Gemini', nameZh: '双子座', symbol: '♊', element: 'Air', elementZh: '风', modality: 'Mutable', modalityZh: '变动', rulingPlanet: 'Mercury', rulingPlanetZh: '水星', dateRange: 'May 21 – Jun 20', trait: 'Curious, adaptable, and effortlessly social.', traitZh: '好奇、灵活，跟人聊天很自然。' },
+  { name: 'Cancer', nameZh: '巨蟹座', symbol: '♋', element: 'Water', elementZh: '水', modality: 'Cardinal', modalityZh: '基本', rulingPlanet: 'Moon', rulingPlanetZh: '月亮', dateRange: 'Jun 21 – Jul 22', trait: 'Intuitive, nurturing, and emotionally deep.', traitZh: '直觉强、会照顾人，感受很深。' },
+  { name: 'Leo', nameZh: '狮子座', symbol: '♌', element: 'Fire', elementZh: '火', modality: 'Fixed', modalityZh: '固定', rulingPlanet: 'Sun', rulingPlanetZh: '太阳', dateRange: 'Jul 23 – Aug 22', trait: 'Charismatic, creative, and born to shine.', traitZh: '有魅力、爱表现，天生想发光。' },
+  { name: 'Virgo', nameZh: '处女座', symbol: '♍', element: 'Earth', elementZh: '土', modality: 'Mutable', modalityZh: '变动', rulingPlanet: 'Mercury', rulingPlanetZh: '水星', dateRange: 'Aug 23 – Sep 22', trait: 'Analytical, practical, and quietly brilliant.', traitZh: '细心、务实，做事讲究。' },
+  { name: 'Libra', nameZh: '天秤座', symbol: '♎', element: 'Air', elementZh: '风', modality: 'Cardinal', modalityZh: '基本', rulingPlanet: 'Venus', rulingPlanetZh: '金星', dateRange: 'Sep 23 – Oct 22', trait: 'Diplomatic, aesthetic, and harmony-seeking.', traitZh: '爱平衡、讲究美感，不想起冲突。' },
+  { name: 'Scorpio', nameZh: '天蝎座', symbol: '♏', element: 'Water', elementZh: '水', modality: 'Fixed', modalityZh: '固定', rulingPlanet: 'Pluto', rulingPlanetZh: '冥王星', dateRange: 'Oct 23 – Nov 21', trait: 'Intense, perceptive, and magnetically powerful.', traitZh: '感受深、看得透，气场强。' },
+  { name: 'Sagittarius', nameZh: '射手座', symbol: '♐', element: 'Fire', elementZh: '火', modality: 'Mutable', modalityZh: '变动', rulingPlanet: 'Jupiter', rulingPlanetZh: '木星', dateRange: 'Nov 22 – Dec 21', trait: 'Adventurous, philosophical, and endlessly optimistic.', traitZh: '爱探索、看得开，乐观。' },
+  { name: 'Capricorn', nameZh: '摩羯座', symbol: '♑', element: 'Earth', elementZh: '土', modality: 'Cardinal', modalityZh: '基本', rulingPlanet: 'Saturn', rulingPlanetZh: '土星', dateRange: 'Dec 22 – Jan 19', trait: 'Disciplined, strategic, and quietly unstoppable.', traitZh: '有纪律、会规划，慢慢把事做成。' },
+  { name: 'Aquarius', nameZh: '水瓶座', symbol: '♒', element: 'Air', elementZh: '风', modality: 'Fixed', modalityZh: '固定', rulingPlanet: 'Uranus', rulingPlanetZh: '天王星', dateRange: 'Jan 20 – Feb 18', trait: 'Visionary, independent, and refreshingly unconventional.', traitZh: '想法多、独立，不太走寻常路。' },
+  { name: 'Pisces', nameZh: '双鱼座', symbol: '♓', element: 'Water', elementZh: '水', modality: 'Mutable', modalityZh: '变动', rulingPlanet: 'Neptune', rulingPlanetZh: '海王星', dateRange: 'Feb 19 – Mar 20', trait: 'Dreamy, compassionate, and deeply creative.', traitZh: '爱想象、心软，很有感受力。' },
 ]
 
 const ELEMENT_EMOJI: Record<string, string> = { Fire: '🔥', Earth: '🌍', Air: '💨', Water: '🌊' }
@@ -68,14 +75,14 @@ const SYNODIC_MONTH = 29.53059
 const REF_NEW_MOON_JD = 2451550.26
 
 const MOON_PHASES: MoonPhaseInfo[] = [
-  { name: 'New Moon', emoji: '🌑', illumination: '0%', meaning: 'Fresh starts and intention setting.' },
-  { name: 'Waxing Crescent', emoji: '🌒', illumination: '1-49%', meaning: 'Building momentum and planting seeds.' },
-  { name: 'First Quarter', emoji: '🌓', illumination: '50%', meaning: 'Decision time — take action on intentions.' },
-  { name: 'Waxing Gibbous', emoji: '🌔', illumination: '51-99%', meaning: 'Refine and adjust before the peak.' },
-  { name: 'Full Moon', emoji: '🌕', illumination: '100%', meaning: 'Culmination, clarity, and release.' },
-  { name: 'Waning Gibbous', emoji: '🌖', illumination: '99-51%', meaning: 'Gratitude and sharing wisdom.' },
-  { name: 'Last Quarter', emoji: '🌗', illumination: '50%', meaning: 'Letting go and forgiving.' },
-  { name: 'Waning Crescent', emoji: '🌘', illumination: '49-1%', meaning: 'Rest, reflect, and prepare for renewal.' },
+  { name: 'New Moon', nameZh: '新月', emoji: '🌑', illumination: '0%', meaning: 'Fresh starts and intention setting.', meaningZh: '适合重新开始，把想做的事想清楚。' },
+  { name: 'Waxing Crescent', nameZh: '娥眉月', emoji: '🌒', illumination: '1-49%', meaning: 'Building momentum and planting seeds.', meaningZh: '适合慢慢推进，把事情铺开。' },
+  { name: 'First Quarter', nameZh: '上弦月', emoji: '🌓', illumination: '50%', meaning: 'Decision time — take action on intentions.', meaningZh: '适合做决定，把想法付诸行动。' },
+  { name: 'Waxing Gibbous', nameZh: '盈凸月', emoji: '🌔', illumination: '51-99%', meaning: 'Refine and adjust before the peak.', meaningZh: '适合调整细节，把事情做完整。' },
+  { name: 'Full Moon', nameZh: '满月', emoji: '🌕', illumination: '100%', meaning: 'Culmination, clarity, and release.', meaningZh: '事情更容易看清，也适合放下。' },
+  { name: 'Waning Gibbous', nameZh: '亏凸月', emoji: '🌖', illumination: '99-51%', meaning: 'Gratitude and sharing wisdom.', meaningZh: '适合复盘、分享，把经验留下来。' },
+  { name: 'Last Quarter', nameZh: '下弦月', emoji: '🌗', illumination: '50%', meaning: 'Letting go and forgiving.', meaningZh: '适合收尾、放手，不要硬撑。' },
+  { name: 'Waning Crescent', nameZh: '残月', emoji: '🌘', illumination: '49-1%', meaning: 'Rest, reflect, and prepare for renewal.', meaningZh: '适合休息、整理，为下一轮做准备。' },
 ]
 
 // ── Calculations ───────────────────────────────────────────────────
@@ -189,21 +196,29 @@ function elementInteraction(natal: string, transit: string): string {
 
 // ── Telegram Display Format ────────────────────────────────────────
 
-export function formatAstroProfile(profile: AstroProfile): string {
+export function formatAstroProfile(profile: AstroProfile, language?: string): string {
   const { sunSign, moonPhase } = profile
+  const zh = language === '中文' || language === 'zh' || language === 'Chinese'
 
-  const lines = [
+  if (zh) {
+    return [
+      `${sunSign.symbol} 太阳星座：${sunSign.nameZh}`,
+      `${ELEMENT_EMOJI[sunSign.element]} 元素：${sunSign.elementZh} | ${sunSign.modalityZh}`,
+      `🪐 守护星：${sunSign.rulingPlanetZh}`,
+      sunSign.traitZh,
+      '',
+      `${moonPhase.emoji} 当前月相：${moonPhase.nameZh}`,
+      moonPhase.meaningZh,
+    ].join('\n')
+  }
+
+  return [
     `${sunSign.symbol} Sun Sign: ${sunSign.name}`,
     `${ELEMENT_EMOJI[sunSign.element]} Element: ${sunSign.element} | ${sunSign.modality}`,
     `🪐 Ruling Planet: ${sunSign.rulingPlanet}`,
     sunSign.trait,
-  ]
-
-  lines.push(
     '',
     `${moonPhase.emoji} Current Moon: ${moonPhase.name}`,
     moonPhase.meaning,
-  )
-
-  return lines.join('\n')
+  ].join('\n')
 }

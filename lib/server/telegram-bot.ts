@@ -13,8 +13,10 @@ import {
   type QuestionConfig,
   type UserProfile,
 } from '@/lib/profile'
-import { normalizeAppLanguage, t } from '@/lib/i18n'
+import { messageMatchesAppLanguage, normalizeAppLanguage, t, visibleMessageText } from '@/lib/i18n'
 import { generateDailyMessage } from './generate-daily-message'
+import { generateMockMessage } from '@/lib/generate-mock-message'
+import { generateColorPng } from './color-image'
 import { generateColorPng } from './color-image'
 import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
@@ -47,6 +49,10 @@ function langOf(profile: ProfileRecord): AppLanguage {
 
 function questionsFor(profile: ProfileRecord): QuestionConfig[] {
   return getOnboardingQuestions(langOf(profile))
+}
+
+function promptQuestion(profile: ProfileRecord, question: QuestionConfig, step: number, total: number): string {
+  return formatQuestionPrompt(question, step, total, langOf(profile))
 }
 
 async function syncChatMenu(profile: ProfileRecord): Promise<void> {
@@ -295,28 +301,40 @@ function sleep(ms: number): Promise<void> {
 
 export async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMessage> {
   const date = localIsoDate(profile.timezone)
+  const lang = langOf(profile)
   const existing = await getDailyMessage(profile.id, date)
   if (existing && isReadyDailyPayload(existing.payload)) {
-    return existing.payload
+    const text = visibleMessageText(existing.payload)
+    if (messageMatchesAppLanguage(text, lang)) {
+      return existing.payload
+    }
+    await deleteDailyMessage(profile.id, date)
   }
 
   // Claim the unique (profile, date) slot so concurrent /today + cron
   // cannot each invent a different reading.
-  const claim = existing?.payload ? 'won' : await claimDailyMessageSlot(profile.id, date)
+  const claim = await claimDailyMessageSlot(profile.id, date)
   if (claim === 'exists') {
     for (let i = 0; i < 20; i++) {
       await sleep(750)
       const row = await getDailyMessage(profile.id, date)
-      if (row && isReadyDailyPayload(row.payload)) {
+      if (
+        row &&
+        isReadyDailyPayload(row.payload) &&
+        messageMatchesAppLanguage(visibleMessageText(row.payload), lang)
+      ) {
         return row.payload
       }
     }
-    // Other worker stuck — take over and generate below.
+    // Other worker stuck or wrote the wrong language — take over below.
   }
 
   const userProfile = toUserProfile(profile)
   const recent = await getRecentDailyMessages(profile.id, 30)
-  const message = await generateDailyMessage(userProfile, date, recent)
+  let message = await generateDailyMessage(userProfile, date, recent)
+  if (!messageMatchesAppLanguage(visibleMessageText(message), lang)) {
+    message = generateMockMessage(userProfile, date)
+  }
   await upsertDailyMessage(profile.id, date, message)
   return message
 }
@@ -329,7 +347,7 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
 
   const parsed = normalizeQuestionAnswer(question, text, profile)
   if (!parsed.ok) {
-    return [parsed.message, formatQuestionPrompt(question, safeStep, questions.length)]
+    return [parsed.message, promptQuestion(profile, question, safeStep, questions.length)]
   }
 
   const patch: Partial<ProfileRecord> = buildProfilePatch(question.id, parsed.value)
@@ -359,7 +377,7 @@ async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRec
       step: nextStep,
       awaiting_field: null,
     })
-    return [formatQuestionPrompt(nextQuestions[nextStep], nextStep, nextQuestions.length)]
+    return [promptQuestion(updatedProfile, nextQuestions[nextStep], nextStep, nextQuestions.length)]
   }
 
   return await finishOnboarding(updatedProfile, flow)
@@ -431,6 +449,7 @@ async function handleEditValue(profile: ProfileRecord, state: BotStateRecord, te
 
   if (field === 'languagePreference') {
     void syncChatMenu(result.profile)
+    await deleteDailyMessage(result.profile.id, localIsoDate(result.profile.timezone))
     return [t.languageUpdated(langOf(result.profile))]
   }
 
@@ -445,7 +464,7 @@ async function resetOnboarding(profile: ProfileRecord): Promise<BotReply[]> {
   })
   await upsertBotState(profile.id, { flow: 'onboarding', step: 0, awaiting_field: null })
   const questions = getOnboardingQuestions(lang)
-  return [t.resetStarted(lang), formatQuestionPrompt(questions[0], 0, questions.length)]
+  return [t.resetStarted(lang), promptQuestion(profile, questions[0], 0, questions.length)]
 }
 
 async function handleCommand(
@@ -481,15 +500,15 @@ async function handleCommand(
         await upsertBotState(profile.id, { flow: 'onboarding', step, awaiting_field: null })
         const question = questions[step]
         if (step === 0) {
-          return [WELCOME_MESSAGE, formatQuestionPrompt(question, step, questions.length)]
+          return [WELCOME_MESSAGE, promptQuestion(profile, question, step, questions.length)]
         }
-        return [t.welcomeBack(lang), formatQuestionPrompt(question, step, questions.length)]
+        return [t.welcomeBack(lang), promptQuestion(profile, question, step, questions.length)]
       }
 
       if (flow === 'layer2') {
         const step = Math.max(0, Math.min(state.step, layer2Questions.length - 1))
         await upsertBotState(profile.id, { flow: 'layer2', step, awaiting_field: null })
-        return [LAYER2_INTRO, formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length)]
+        return [LAYER2_INTRO, formatQuestionPrompt(layer2Questions[step], step, layer2Questions.length, lang)]
       }
 
       void syncChatMenu(profile)
@@ -503,7 +522,7 @@ async function handleCommand(
       if (!profile.onboarding_complete) {
         const questions = questionsFor(profile)
         const step = Math.max(0, Math.min(state.step, questions.length - 1))
-        return [t.finishOnboardingFirst(lang), formatQuestionPrompt(questions[step], step, questions.length)]
+        return [t.finishOnboardingFirst(lang), promptQuestion(profile, questions[step], step, questions.length)]
       }
       if (profile.status === 'stopped') {
         return [
@@ -655,6 +674,7 @@ async function handleCommand(
 
       const updated = await updateProfile(profile.id, { language_preference: selected })
       void syncChatMenu(updated)
+      await deleteDailyMessage(updated.id, localIsoDate(updated.timezone))
       return [t.languageUpdated(langOf(updated))]
     }
 
@@ -771,7 +791,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     const questions = questionsFor(profile)
     replies = [
       WELCOME_MESSAGE,
-      formatQuestionPrompt(questions[0], 0, questions.length),
+      promptQuestion(profile, questions[0], 0, questions.length),
     ]
   } else if (state.awaiting_field && !messageText.startsWith('/')) {
     replies = await handleEditValue(profile, state, messageText)

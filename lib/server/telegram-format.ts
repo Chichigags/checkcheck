@@ -4,20 +4,29 @@ import type { DailyMessage } from '@/lib/generate-mock-message'
 import { t, normalizeAppLanguage, isChinese } from '@/lib/i18n'
 import type { DailyMessageRecord, ProfileRecord } from './types'
 
-export function formatQuestionPrompt(question: QuestionConfig, step: number, total: number): string {
+export function formatQuestionPrompt(
+  question: QuestionConfig,
+  step: number,
+  total: number,
+  language?: string
+): string {
+  const zh = language
+    ? isChinese(language)
+    : /[\u4e00-\u9fff]/.test(question.question) && !/English|Choose your language/.test(question.question)
   const lines = [`(${step + 1}/${total}) ${question.question}`]
 
   if ((question.type === 'select' || question.type === 'language') && question.options && question.options.length > 0) {
-    lines.push('', `Options: ${question.options.join(' / ')}`)
+    const label = question.type === 'language' ? 'Options / 选项' : zh ? '选项' : 'Options'
+    lines.push('', `${label}: ${question.options.join(' / ')}`)
   }
   if (question.type === 'birthTime' && question.options) {
     lines.push('', question.options.join(' / '))
   }
   if (question.type === 'timezone') {
-    lines.push('', 'Example: America/New_York')
+    lines.push('', zh ? '例如：Asia/Shanghai' : 'Example: America/New_York')
   }
   if (question.shortcutLabel) {
-    lines.push('', `Or reply "${question.shortcutLabel}" if same as birth city`)
+    lines.push('', zh ? `或回复「${question.shortcutLabel}」` : `Or reply "${question.shortcutLabel}" if same as birth city`)
   }
   return lines.join('\n')
 }
@@ -93,7 +102,9 @@ export function formatSettings(profile: ProfileRecord): string {
   const zh = isChinese(lang)
   const unset = zh ? '未设置' : 'Not set'
   const deliveryLabel = profile.delivery_time
-    ? DELIVERY_TIME_LABELS[profile.delivery_time as keyof typeof DELIVERY_TIME_LABELS] ?? profile.delivery_time
+    ? zh
+      ? ({ Morning: '早上 8:00', Afternoon: '中午 12:00', Evening: '晚上 19:00' }[profile.delivery_time] ?? profile.delivery_time)
+      : (DELIVERY_TIME_LABELS[profile.delivery_time as keyof typeof DELIVERY_TIME_LABELS] ?? profile.delivery_time)
     : unset
 
   if (zh) {

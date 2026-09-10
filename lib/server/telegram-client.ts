@@ -60,11 +60,27 @@ const ZH_COMMANDS = [
   { command: 'settings', description: '查看和编辑资料' },
 ]
 
+const COMMAND_SCOPES: Array<Record<string, unknown> | undefined> = [
+  undefined,
+  { type: 'all_private_chats' },
+]
+
+async function replaceCommands(
+  commands: Array<{ command: string; description: string }>,
+  languageCode?: string
+): Promise<void> {
+  for (const scope of COMMAND_SCOPES) {
+    const payload: Record<string, unknown> = {}
+    if (languageCode) payload.language_code = languageCode
+    if (scope) payload.scope = scope
+    await telegramRequest('deleteMyCommands', payload)
+    await telegramRequest('setMyCommands', { ...payload, commands })
+  }
+}
+
 export async function setBotCommands(): Promise<void> {
-  await telegramRequest('deleteMyCommands', {})
-  await telegramRequest('deleteMyCommands', { language_code: 'zh' })
-  await telegramRequest('setMyCommands', { commands: EN_COMMANDS })
-  await telegramRequest('setMyCommands', { commands: ZH_COMMANDS, language_code: 'zh' })
+  await replaceCommands(EN_COMMANDS)
+  await replaceCommands(ZH_COMMANDS, 'zh')
 }
 
 export async function setBotCommandsForChat(chatId: number, language: string): Promise<void> {

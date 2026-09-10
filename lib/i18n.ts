@@ -13,6 +13,29 @@ export function normalizeAppLanguage(value: string | null | undefined): AppLangu
   return 'English'
 }
 
+export function visibleMessageText(payload: {
+  headline?: string
+  body?: string
+  paragraphs?: string[]
+  todayVibe?: string
+  dailyLuck?: string
+} | null | undefined): string {
+  if (!payload) return ''
+  return [payload.headline, payload.todayVibe, payload.body, payload.dailyLuck, ...(payload.paragraphs ?? [])]
+    .filter(Boolean)
+    .join('\n')
+}
+
+/** True when the visible copy matches the user's app language. */
+export function messageMatchesAppLanguage(
+  text: string,
+  lang: AppLanguage | string | null | undefined
+): boolean {
+  const han = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
+  if (isChinese(lang)) return han >= 12
+  return han < 8
+}
+
 export const t = {
   welcome(lang?: AppLanguage): string {
     if (isChinese(lang)) {
