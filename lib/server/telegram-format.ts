@@ -47,8 +47,8 @@ function paragraphsFromMessage(message: DailyMessage): string[] {
   return [message.dailyLuck, message.watchOut].filter((p): p is string => Boolean(p)).slice(0, 3)
 }
 
-export function formatLuckyFooter(message: DailyMessage): string {
-  const lang = normalizeAppLanguage(message.language)
+export function formatLuckyFooter(message: DailyMessage, langOverride?: string): string {
+  const lang = normalizeAppLanguage(langOverride ?? message.language)
   const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber : [7, 23]
   const numberText = isChinese(lang) ? numbers.join('、') : numbers.join(', ')
   const sep = isChinese(lang) ? '：' : ': '
@@ -58,8 +58,8 @@ export function formatLuckyFooter(message: DailyMessage): string {
   ].join('\n')
 }
 
-export function formatDailyMessage(message: DailyMessage): string {
-  const lang = normalizeAppLanguage(message.language)
+export function formatDailyMessage(message: DailyMessage, langOverride?: string): string {
+  const lang = normalizeAppLanguage(langOverride ?? message.language)
   const takeaway = (message.headline || message.todayVibe || '').trim()
   const dateLabel = t.formatDailyDate(message.date, lang)
   const sep = isChinese(lang) ? '｜' : ' | '
@@ -70,7 +70,7 @@ export function formatDailyMessage(message: DailyMessage): string {
   for (const paragraph of paragraphs) {
     lines.push('', paragraph)
   }
-  lines.push('', formatLuckyFooter(message))
+  lines.push('', formatLuckyFooter(message, lang))
   return lines.join('\n')
 }
 

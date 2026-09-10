@@ -13,10 +13,9 @@ import {
   type QuestionConfig,
   type UserProfile,
 } from '@/lib/profile'
-import { messageMatchesAppLanguage, normalizeAppLanguage, t, visibleMessageText } from '@/lib/i18n'
+import { normalizeAppLanguage, payloadMatchesAppLanguage, t } from '@/lib/i18n'
 import { generateDailyMessage } from './generate-daily-message'
 import { generateMockMessage } from '@/lib/generate-mock-message'
-import { generateColorPng } from './color-image'
 import { generateColorPng } from './color-image'
 import { buildProfilePatch, inferTimezoneFromCity, profileFieldToColumn, toUserProfile } from './profile-adapter'
 import {
@@ -75,8 +74,12 @@ async function ensureGlobalMenu(): Promise<void> {
   }
 }
 
-export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
-  const caption = formatDailyMessage(message)
+export async function sendDailyCheckCheck(
+  chatId: number,
+  message: DailyMessage,
+  lang?: AppLanguage
+): Promise<void> {
+  const caption = formatDailyMessage(message, lang)
   const colorPng = generateColorPng(message.luckyColour.hex, 400, 80)
 
   // Telegram caption limit is 1024 characters.
@@ -299,16 +302,34 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function generateAndStoreTodayMessage(
+  profile: ProfileRecord,
+  date: string,
+  lang: AppLanguage
+): Promise<DailyMessage> {
+  const userProfile = toUserProfile(profile)
+  const recent = await getRecentDailyMessages(profile.id, 30)
+  let message = await generateDailyMessage(userProfile, date, recent)
+  if (!payloadMatchesAppLanguage(message, lang)) {
+    message = generateMockMessage(userProfile, date)
+  }
+  message = { ...message, language: lang }
+  await upsertDailyMessage(profile.id, date, message)
+  return message
+}
+
 export async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<DailyMessage> {
   const date = localIsoDate(profile.timezone)
   const lang = langOf(profile)
   const existing = await getDailyMessage(profile.id, date)
+  if (existing && isReadyDailyPayload(existing.payload) && payloadMatchesAppLanguage(existing.payload, lang)) {
+    return existing.payload
+  }
+
+  // Wrong-language cache: overwrite immediately. Do not delete+claim — that
+  // race can serve the old Chinese row while another worker is still writing.
   if (existing && isReadyDailyPayload(existing.payload)) {
-    const text = visibleMessageText(existing.payload)
-    if (messageMatchesAppLanguage(text, lang)) {
-      return existing.payload
-    }
-    await deleteDailyMessage(profile.id, date)
+    return generateAndStoreTodayMessage(profile, date, lang)
   }
 
   // Claim the unique (profile, date) slot so concurrent /today + cron
@@ -321,22 +342,17 @@ export async function getOrCreateTodayMessage(profile: ProfileRecord): Promise<D
       if (
         row &&
         isReadyDailyPayload(row.payload) &&
-        messageMatchesAppLanguage(visibleMessageText(row.payload), lang)
+        payloadMatchesAppLanguage(row.payload, lang)
       ) {
         return row.payload
       }
+      if (row && isReadyDailyPayload(row.payload)) {
+        break
+      }
     }
-    // Other worker stuck or wrote the wrong language — take over below.
   }
 
-  const userProfile = toUserProfile(profile)
-  const recent = await getRecentDailyMessages(profile.id, 30)
-  let message = await generateDailyMessage(userProfile, date, recent)
-  if (!messageMatchesAppLanguage(visibleMessageText(message), lang)) {
-    message = generateMockMessage(userProfile, date)
-  }
-  await upsertDailyMessage(profile.id, date, message)
-  return message
+  return generateAndStoreTodayMessage(profile, date, lang)
 }
 
 async function handleOnboardingAnswer(profile: ProfileRecord, state: BotStateRecord, text: string): Promise<BotReply[]> {
@@ -819,7 +835,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ig
     } else if (reply.type === 'send_first_reading') {
       try {
         const message = await getOrCreateTodayMessage(reply.profile)
-        await sendDailyCheckCheck(chatId, message)
+        await sendDailyCheckCheck(chatId, message, langOf(reply.profile))
       } catch (error) {
         console.error('First CheckCheck generation failed after onboarding:', error)
         const lang = langOf(reply.profile)

@@ -19,9 +19,7 @@ function summarizeHistory(records: DailyMessageRecord[]): string {
     .map((record) => {
       const p = record.payload as Partial<DailyMessage> | null
       const topics = (p?.focusTopics ?? []).join(', ') || 'n/a'
-      const headline = p?.headline || p?.todayVibe || p?.dailyLuck || ''
-      const preview = (p?.paragraphs ?? []).join(' / ').slice(0, 120) || String(p?.body ?? '').slice(0, 120)
-      return `- ${record.message_date} | topics=${topics} | headline="${String(headline).slice(0, 80)}" | ${preview}`
+      return `- ${record.message_date} | topics=${topics}`
     })
     .join('\n')
 }
@@ -151,9 +149,9 @@ function buildUserPrompt(
     `Lucky ritual already computed (do not mention the source element): ${zh ? ritual.colour.nameZh : ritual.colour.name} / ${ritual.numbers.join(zh ? '、' : ', ')}`,
     '',
     zh
-      ? '用简体中文写正文。即使下面的历史是英文，也不要用英文。'
-      : 'Write the headline and paragraphs in English only. Even if recent messages below are Chinese, do not copy their language.',
-    '=== Recent messages (do not repeat the same headline, topics, or closing move) ===',
+      ? '用简体中文写正文。下面只列出最近用过的主题标签，不要抄旧文，也不要改用英文。'
+      : 'Write the headline and paragraphs in English only. The list below is topic tags only — do not copy old wording, and do not write Chinese.',
+    '=== Recent topic tags (do not repeat the same topics or closing move) ===',
     historySummary,
     ''
   )
@@ -171,8 +169,9 @@ function buildUserPrompt(
 }
 
 const FORBIDDEN_USER_TEXT = [
-  '财星', '官杀', '比劫', '食伤', '印星', '日主',
+  '财星', '财富之星', '财富能量', '官杀', '比劫', '食伤', '印星', '日主',
   '火生土', '土克水', '金生水', '入库', '冲合刑害',
+  '和谐能量', '元素交融', '气场',
   'Day Master', 'wealth star', 'output star', 'resource star',
   'authority star', 'peer star',
 ]

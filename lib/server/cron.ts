@@ -1,4 +1,5 @@
 import type { DailyMessage } from '@/lib/generate-mock-message'
+import { normalizeAppLanguage } from '@/lib/i18n'
 import { getOrCreateTodayMessage, sendDailyCheckCheck } from './telegram-bot'
 import { listDueProfiles, updateProfile } from './repository'
 import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from './schedule'
@@ -16,7 +17,11 @@ export async function runDailyDispatch(limit = 200) {
     try {
       // Shared claim/cache path — same as /today, prevents double different readings
       const message: DailyMessage = await getOrCreateTodayMessage(profile)
-      await sendDailyCheckCheck(profile.telegram_user_id, message)
+      await sendDailyCheckCheck(
+        profile.telegram_user_id,
+        message,
+        normalizeAppLanguage(profile.language_preference)
+      )
       await updateProfile(profile.id, {
         next_delivery_at: computeNextDeliveryAt(
           normalizeTimeZone(profile.timezone),

@@ -19,9 +19,22 @@ export function visibleMessageText(payload: {
   paragraphs?: string[]
   todayVibe?: string
   dailyLuck?: string
+  watchOut?: string
+  modules?: Array<{ title?: string; message?: string }>
+  luckyColour?: { name?: string }
 } | null | undefined): string {
   if (!payload) return ''
-  return [payload.headline, payload.todayVibe, payload.body, payload.dailyLuck, ...(payload.paragraphs ?? [])]
+  const modules = (payload.modules ?? []).flatMap((module) => [module.title, module.message])
+  return [
+    payload.headline,
+    payload.todayVibe,
+    payload.body,
+    payload.dailyLuck,
+    payload.watchOut,
+    payload.luckyColour?.name,
+    ...(payload.paragraphs ?? []),
+    ...modules,
+  ]
     .filter(Boolean)
     .join('\n')
 }
@@ -33,7 +46,20 @@ export function messageMatchesAppLanguage(
 ): boolean {
   const han = (text.match(/[\u4e00-\u9fff]/g) ?? []).length
   if (isChinese(lang)) return han >= 12
-  return han < 8
+  return han === 0
+}
+
+/** Cached payload is safe to send only if its language tag and script both match. */
+export function payloadMatchesAppLanguage(
+  payload: Parameters<typeof visibleMessageText>[0] & { language?: string | null },
+  lang: AppLanguage | string | null | undefined
+): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const expected = normalizeAppLanguage(lang)
+  if (payload.language && normalizeAppLanguage(payload.language) !== expected) {
+    return false
+  }
+  return messageMatchesAppLanguage(visibleMessageText(payload), expected)
 }
 
 export const t = {
