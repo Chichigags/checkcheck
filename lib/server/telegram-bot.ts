@@ -50,22 +50,7 @@ function questionsFor(profile: ProfileRecord): QuestionConfig[] {
 }
 
 export async function sendDailyCheckCheck(chatId: number, message: DailyMessage): Promise<void> {
-  const lang = normalizeAppLanguage(message.language)
-  const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber.join(', ') : '7, 23'
-  const ritual = [
-    `🎨 ${t.luckyColour(lang)}: ${message.luckyColour.name}`,
-    `🔢 ${t.luckyNumber(lang)}: ${numbers}`,
-  ].join('\n')
-
-  // Single Telegram message: thin colour swatch + full reading as caption.
-  const caption = [
-    t.checkCheckFor(lang, message.nickname, message.date),
-    '',
-    formatDailyMessage(message),
-    '',
-    ritual,
-  ].join('\n')
-
+  const caption = formatDailyMessage(message)
   const colorPng = generateColorPng(message.luckyColour.hex, 400, 80)
 
   // Telegram caption limit is 1024 characters.
@@ -74,11 +59,7 @@ export async function sendDailyCheckCheck(chatId: number, message: DailyMessage)
     return
   }
 
-  // Rare overflow: still one message — text only, include hex so the colour is clear.
-  await sendTelegramMessage(
-    chatId,
-    `${caption}\n${message.luckyColour.hex}`
-  )
+  await sendTelegramMessage(chatId, `${caption}\n${message.luckyColour.hex}`)
 }
 
 const EDITABLE_FIELDS: Record<string, keyof UserProfile> = {

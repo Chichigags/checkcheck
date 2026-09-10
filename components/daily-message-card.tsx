@@ -1,84 +1,60 @@
 'use client'
 
-import type { DailyMessage, DailyModule } from '@/lib/generate-mock-message'
-import { Sparkles } from 'lucide-react'
+import type { DailyMessage } from '@/lib/generate-mock-message'
+import { isChinese, normalizeAppLanguage, t } from '@/lib/i18n'
 
 interface DailyMessageCardProps {
   message: DailyMessage
 }
 
-function ModuleBlock({ module }: { module: DailyModule }) {
-  return (
-    <div className="rounded-lg p-3 bg-muted/40">
-      <p className="font-medium text-sm text-foreground mb-1">{module.title}</p>
-      <p className="text-sm text-muted-foreground leading-relaxed">{module.message}</p>
-    </div>
-  )
+function paragraphsFromMessage(message: DailyMessage): string[] {
+  if (message.paragraphs && message.paragraphs.length > 0) {
+    return message.paragraphs.filter(Boolean).slice(0, 3)
+  }
+  const collected: string[] = []
+  if (message.body) {
+    collected.push(...message.body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean))
+  }
+  for (const module of message.modules ?? []) {
+    if (module.message.trim()) collected.push(module.message.trim())
+  }
+  if (collected.length > 0) return collected.slice(0, 3)
+  return [message.dailyLuck, message.watchOut].filter((p): p is string => Boolean(p)).slice(0, 3)
 }
 
 export function DailyMessageCard({ message }: DailyMessageCardProps) {
-  const formattedDate = new Date(`${message.date}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  })
-
-  const headline = message.headline || message.todayVibe
-  const modules = message.modules ?? []
-  const numbers = message.luckyNumber?.join(', ') ?? '7, 23'
+  const lang = normalizeAppLanguage(message.language)
+  const zh = isChinese(lang)
+  const takeaway = message.headline || message.todayVibe || ''
+  const dateLabel = t.formatDailyDate(message.date, lang)
+  const headline = takeaway
+    ? `${dateLabel}${zh ? '｜' : ' | '}${takeaway}`
+    : dateLabel
+  const paragraphs = paragraphsFromMessage(message)
+  const numbers = message.luckyNumber ?? []
+  const numberText = zh ? numbers.join('、') : numbers.join(', ')
+  const sep = zh ? '：' : ': '
 
   return (
     <div className="w-full max-w-[380px] mx-auto">
       <div className="bg-background rounded-2xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-4 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground">{formattedDate}</p>
-          <h2 className="font-semibold text-foreground">{message.nickname}</h2>
-        </div>
+        <div
+          className="h-16 w-full"
+          style={{ backgroundColor: message.luckyColour.hex }}
+        />
 
         <div className="p-4 flex flex-col gap-4">
-          {headline && (
-            <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-foreground leading-relaxed">{headline}</p>
-            </div>
-          )}
+          <h2 className="font-semibold text-foreground leading-snug">{headline}</h2>
 
-          {message.body && (
-            <p className="text-sm text-muted-foreground leading-relaxed">{message.body}</p>
-          )}
+          {paragraphs.map((paragraph, index) => (
+            <p key={index} className="text-sm text-foreground/80 leading-relaxed">
+              {paragraph}
+            </p>
+          ))}
 
-          {modules.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {modules.map((module, index) => (
-                <ModuleBlock key={`${module.type}-${index}`} module={module} />
-              ))}
-            </div>
-          ) : (
-            <>
-              {message.dailyLuck && (
-                <p className="text-sm text-muted-foreground leading-relaxed">{message.dailyLuck}</p>
-              )}
-              {message.watchOut && (
-                <p className="text-sm text-muted-foreground leading-relaxed">{message.watchOut}</p>
-              )}
-            </>
-          )}
-
-          <div className="border-t border-border pt-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div
-                className="h-8 w-8 rounded-full shadow-inner flex-shrink-0"
-                style={{ backgroundColor: message.luckyColour.hex }}
-              />
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Lucky Colour</p>
-                <p className="font-medium text-foreground">{message.luckyColour.name}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Lucky Number</p>
-              <p className="font-medium text-foreground">{numbers}</p>
-            </div>
+          <div className="border-t border-border pt-3 flex flex-col gap-1 text-sm">
+            <p>🎨 {t.luckyColour(lang)}{sep}{message.luckyColour.name}</p>
+            <p>🔢 {t.luckyNumber(lang)}{sep}{numberText || (zh ? '5、1' : '5, 1')}</p>
           </div>
         </div>
       </div>

@@ -50,7 +50,7 @@ function CollapsedRow({
             <span className="text-xs text-muted-foreground">{entry.formattedDate}</span>
           </div>
           <p className="text-sm text-muted-foreground truncate leading-relaxed">
-            {entry.message.dailyLuck}
+            {entry.message.headline || entry.message.todayVibe || entry.message.dailyLuck}
           </p>
         </div>
       </div>

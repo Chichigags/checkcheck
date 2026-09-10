@@ -83,11 +83,21 @@ Type /today for today's reading, or /help to see all commands.`
   },
 
   luckyColour(lang: AppLanguage): string {
-    return isChinese(lang) ? '幸运色' : 'Lucky Colour'
+    return isChinese(lang) ? '幸运色' : 'Lucky color'
   },
 
   luckyNumber(lang: AppLanguage): string {
-    return isChinese(lang) ? '幸运数字' : 'Lucky Number'
+    return isChinese(lang) ? '幸运数字' : 'Lucky numbers'
+  },
+
+  formatDailyDate(date: string, lang: AppLanguage): string {
+    const parts = date.split('-').map(Number)
+    const month = parts[1]
+    const day = parts[2]
+    if (!month || !day) return date
+    if (isChinese(lang)) return `${month}月${day}日`
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    return `${months[month - 1]} ${day}`
   },
 
   checkCheckFor(lang: AppLanguage, name: string, date: string): string {

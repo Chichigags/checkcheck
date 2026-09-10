@@ -73,6 +73,71 @@ const HIDDEN: number[][] = [
 
 const CLASHES: [number, number][] = [[0, 6], [1, 7], [2, 8], [3, 9], [4, 10], [5, 11]]
 const HARMONIES: [number, number][] = [[0, 1], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7]]
+const HARMS: [number, number][] = [[0, 7], [1, 6], [2, 5], [3, 4], [8, 11], [9, 10]]
+const TRIPLE_PUNISH: number[][] = [
+  [0, 3], // 子卯
+  [2, 5], [5, 8], [2, 8], // 寅巳申
+  [1, 10], [10, 7], [1, 7], // 丑戌未
+]
+const SELF_PUNISH = new Set([4, 6, 9, 11]) // 辰午酉亥
+
+const ELEMENT_NUMBERS: Record<BaziElement, [number, number]> = {
+  Wood: [3, 8],
+  Fire: [2, 7],
+  Earth: [5, 10],
+  Metal: [4, 9],
+  Water: [1, 6],
+}
+
+const ELEMENT_COLOURS: Record<BaziElement, Array<{ name: string; nameZh: string; hex: string }>> = {
+  Wood: [
+    { name: 'Sage green', nameZh: '鼠尾草绿', hex: '#9CAF88' },
+    { name: 'Moss', nameZh: '苔绿', hex: '#8A9A5B' },
+    { name: 'Jade', nameZh: '青绿', hex: '#00A86B' },
+  ],
+  Fire: [
+    { name: 'Coral', nameZh: '珊瑚红', hex: '#FF7F7F' },
+    { name: 'Ember orange', nameZh: '余烬橙', hex: '#E25822' },
+    { name: 'Amber brown', nameZh: '琥珀棕', hex: '#B86B2A' },
+  ],
+  Earth: [
+    { name: 'Clay', nameZh: '陶土色', hex: '#C4A484' },
+    { name: 'Sand', nameZh: '沙色', hex: '#C2B280' },
+    { name: 'Ochre', nameZh: '赭石', hex: '#CC7722' },
+  ],
+  Metal: [
+    { name: 'Silver mist', nameZh: '银雾', hex: '#C0C0C0' },
+    { name: 'Pearl', nameZh: '珍珠白', hex: '#EAE0C8' },
+    { name: 'Steel', nameZh: '钢青', hex: '#71797E' },
+  ],
+  Water: [
+    { name: 'Ocean blue', nameZh: '海蓝', hex: '#0077B6' },
+    { name: 'Ink', nameZh: '墨色', hex: '#2C3E50' },
+    { name: 'Mist blue', nameZh: '雾蓝', hex: '#A7C7E7' },
+  ],
+}
+
+const ANIMAL_TONE: Record<string, string> = {
+  Rat: 'late-day cleverness, noticing small openings, easy to over-calculate',
+  Ox: 'slow grind and stubborn follow-through; rushing feels wrong',
+  Tiger: 'bold starts and impatience; leaping before the landing is ready',
+  Rabbit: 'softer social pace, more sensitive to tone, prefers not to confront',
+  Dragon: 'extra drive and bigger ideas; easy to overpromise',
+  Snake: 'inward and watchful; rushing a decision backfires',
+  Horse: 'restless body energy that wants movement; sitting still gets itchy',
+  Goat: 'comfort-seeking and indecisive when options multiply',
+  Monkey: 'quick wit and scattered attention; clever shortcuts that skip a step',
+  Rooster: 'sharp eye for flaws; easy to say one extra critical sentence',
+  Dog: 'loyal worry and defensive replies; taking things personally',
+  Pig: 'ease and appetite; easy to overspend, overeat, or say yes once too often',
+}
+
+const PILLAR_LIFE_AREA: Record<string, string> = {
+  Year: 'longer-term plans, family, or the wider environment',
+  Month: 'work rhythm, this season of life, or colleagues',
+  Day: 'mood, close relationships, or how you feel in your body',
+  Hour: 'today’s schedule, evening energy, or follow-through',
+}
 
 const EL_ORDER: BaziElement[] = ['Wood', 'Fire', 'Earth', 'Metal', 'Water']
 const EL_EMOJI: Record<BaziElement, string> = { Wood: '🪵', Fire: '🔥', Earth: '⛰️', Metal: '🪙', Water: '💧' }
@@ -220,35 +285,63 @@ function isHarmony(a: number, b: number): boolean {
   return HARMONIES.some(([x, y]) => (x === a && y === b) || (x === b && y === a))
 }
 
+function isHarm(a: number, b: number): boolean {
+  return HARMS.some(([x, y]) => (x === a && y === b) || (x === b && y === a))
+}
+
+function isPunishment(a: number, b: number): boolean {
+  if (a === b && SELF_PUNISH.has(a)) return true
+  return TRIPLE_PUNISH.some(([x, y]) => (x === a && y === b) || (x === b && y === a))
+}
+
+function prevElement(el: BaziElement): BaziElement {
+  return EL_ORDER[(EL_ORDER.indexOf(el) + 4) % 5]
+}
+
+function nextElement(el: BaziElement): BaziElement {
+  return EL_ORDER[(EL_ORDER.indexOf(el) + 1) % 5]
+}
+
+function wealthElement(el: BaziElement): BaziElement {
+  return EL_ORDER[(EL_ORDER.indexOf(el) + 2) % 5]
+}
+
+function authorityElement(el: BaziElement): BaziElement {
+  return EL_ORDER[(EL_ORDER.indexOf(el) + 3) % 5]
+}
+
 function pillarShort(p: Pillar): string {
   return `${STEMS[p.stemIndex]}${BRANCHES[p.branchIndex]}`
 }
 
-/**
- * Five Elements relationship between the Day Master and another element.
- * Based on the generating (相生) and controlling (相克) cycles.
- */
-function elementRelation(dm: BaziElement, other: BaziElement): string {
-  if (dm === other) return 'Peer (比肩) — similar energy, support or competition'
-  const di = EL_ORDER.indexOf(dm)
-  const oi = EL_ORDER.indexOf(other)
-  if ((di + 1) % 5 === oi) return 'Output (食伤) — creative, expressive, may drain stamina'
-  if ((oi + 1) % 5 === di) return 'Resource (印星) — supportive, nurturing, helpful energy'
-  if ((di + 2) % 5 === oi) return 'Wealth (财星) — opportunity and reward, requires effort'
-  return 'Authority (官杀) — discipline, external pressure, but also growth'
-}
-
 export type DailyRelationKind = 'peer' | 'output' | 'resource' | 'wealth' | 'authority'
+export type DayMasterStrength = 'weak' | 'balanced' | 'strong'
+
+export interface DailyLuckyRitual {
+  colour: { name: string; nameZh: string; hex: string }
+  numbers: [number, number]
+  sourceElement: BaziElement
+}
 
 export interface DailyBaziSignals {
   dayMasterElement: BaziElement
   todayElement: BaziElement
   todayAnimal: string
   todayPillar: string
-  relation: string
+  todayYearPillar: string
+  todayMonthPillar: string
   relationKind: DailyRelationKind
+  monthRelationKind: DailyRelationKind
+  yearRelationKind: DailyRelationKind
   clashLabels: string[]
   harmonyLabels: string[]
+  punishmentLabels: string[]
+  harmLabels: string[]
+  usefulElements: BaziElement[]
+  unfavourableElements: BaziElement[]
+  favorableElement: BaziElement
+  dayMasterStrength: DayMasterStrength
+  strongestThemes: string[]
   isNeutral: boolean
   weekday: number // 0=Sun … 6=Sat (UTC noon of date)
 }
@@ -263,13 +356,135 @@ function relationKind(dm: BaziElement, other: BaziElement): DailyRelationKind {
   return 'authority'
 }
 
+function themeForRelation(kind: DailyRelationKind): string[] {
+  switch (kind) {
+    case 'wealth':
+      return ['money', 'impulse spending']
+    case 'output':
+      return ['communication', 'expression']
+    case 'resource':
+      return ['rest', 'learning']
+    case 'authority':
+      return ['work', 'pressure']
+    case 'peer':
+      return ['collaboration', 'comparison']
+  }
+}
+
+function themeForPillar(label: string): string {
+  switch (label) {
+    case 'Year':
+      return 'family / long-term plans'
+    case 'Month':
+      return 'work'
+    case 'Day':
+      return 'mood / close relationships'
+    case 'Hour':
+      return 'schedule / evening energy'
+    default:
+      return 'pacing'
+  }
+}
+
+function natalStrength(chart: BaziChart): {
+  strength: DayMasterStrength
+  useful: BaziElement[]
+  unfavourable: BaziElement[]
+} {
+  const dm = S_EL[chart.day.stemIndex]
+  const counts = countElements(chart)
+  const support = counts[dm] + counts[prevElement(dm)]
+  const total = EL_ORDER.reduce((sum, el) => sum + counts[el], 0) || 1
+  const ratio = support / total
+
+  const strength: DayMasterStrength = ratio < 0.32 ? 'weak' : ratio > 0.52 ? 'strong' : 'balanced'
+  if (strength === 'weak') {
+    return {
+      strength,
+      useful: [prevElement(dm), dm],
+      unfavourable: [authorityElement(dm), nextElement(dm)],
+    }
+  }
+  if (strength === 'strong') {
+    return {
+      strength,
+      useful: [wealthElement(dm), nextElement(dm), authorityElement(dm)],
+      unfavourable: [dm, prevElement(dm)],
+    }
+  }
+  return {
+    strength,
+    useful: [wealthElement(dm), prevElement(dm)],
+    unfavourable: [authorityElement(dm)],
+  }
+}
+
+function pickFavorableElement(
+  natal: ReturnType<typeof natalStrength>,
+  todayEl: BaziElement,
+  kind: DailyRelationKind,
+  hasFriction: boolean
+): BaziElement {
+  if (hasFriction) return natal.useful[0]
+  if (natal.useful.includes(todayEl)) return todayEl
+  if (kind === 'authority' || kind === 'peer') return natal.useful[0]
+  return natal.useful[0]
+}
+
+function pickStrongestThemes(
+  relationKindToday: DailyRelationKind,
+  monthKind: DailyRelationKind,
+  clashLabels: string[],
+  harmonyLabels: string[],
+  punishmentLabels: string[],
+  harmLabels: string[],
+  weekday: number
+): string[] {
+  const themes: string[] = []
+  const add = (theme: string) => {
+    if (theme && !themes.includes(theme)) themes.push(theme)
+  }
+
+  add(themeForRelation(relationKindToday)[0])
+
+  const friction = [...punishmentLabels, ...harmLabels, ...clashLabels]
+  if (friction[0]) add(themeForPillar(friction[0]))
+  else if (harmonyLabels[0]) add(themeForPillar(harmonyLabels[0]))
+
+  if (monthKind !== relationKindToday && (monthKind === 'wealth' || monthKind === 'authority')) {
+    add(themeForRelation(monthKind)[0])
+  }
+
+  if (themes.length < 2) {
+    add(themeForRelation(relationKindToday)[1])
+  }
+
+  if (themes.length < 2) {
+    add(weekday === 0 || weekday === 6 ? 'pacing' : 'finishing work')
+  }
+
+  return themes.slice(0, 3)
+}
+
+function collectBranchHits(
+  todayBranch: number,
+  userBranches: Array<{ label: string; index: number }>,
+  test: (a: number, b: number) => boolean
+): string[] {
+  return userBranches.filter((ub) => test(todayBranch, ub.index)).map((ub) => ub.label)
+}
+
 /** Structured daily signals for LLM prompts and deterministic fallbacks */
 export function getDailySignals(chart: BaziChart, todayDate: string): DailyBaziSignals {
   const [y, m, d] = todayDate.split('-').map(Number)
   const today = calcDayPillar(y, m, d)
-  const dm = chart.day.stemIndex
-  const dmEl = S_EL[dm]
+  const by = baziYear(y, m, d)
+  const bm = baziMonth(m, d)
+  const yearP = calcYearPillar(by)
+  const monthP = calcMonthPillar(bm, yearP.stemIndex)
+  const dmEl = S_EL[chart.day.stemIndex]
   const todayEl = S_EL[today.stemIndex]
+  const weekday = new Date(`${todayDate}T12:00:00Z`).getUTCDay()
 
   const userBranches = [
     { label: 'Year', index: chart.year.branchIndex },
@@ -278,81 +493,157 @@ export function getDailySignals(chart: BaziChart, todayDate: string): DailyBaziS
   ]
   if (chart.hour) userBranches.push({ label: 'Hour', index: chart.hour.branchIndex })
 
-  const clashLabels: string[] = []
-  const harmonyLabels: string[] = []
-  for (const ub of userBranches) {
-    if (isClash(today.branchIndex, ub.index)) clashLabels.push(ub.label)
-    if (isHarmony(today.branchIndex, ub.index)) harmonyLabels.push(ub.label)
-  }
+  const clashLabels = collectBranchHits(today.branchIndex, userBranches, isClash)
+  const harmonyLabels = collectBranchHits(today.branchIndex, userBranches, isHarmony)
+  const punishmentLabels = collectBranchHits(today.branchIndex, userBranches, isPunishment)
+  const harmLabels = collectBranchHits(today.branchIndex, userBranches, isHarm)
+  const natal = natalStrength(chart)
+  const kind = relationKind(dmEl, todayEl)
+  const monthKind = relationKind(dmEl, S_EL[monthP.stemIndex])
+  const yearKind = relationKind(dmEl, S_EL[yearP.stemIndex])
+  const hasFriction = clashLabels.length + punishmentLabels.length + harmLabels.length > 0
+  const favorableElement = pickFavorableElement(natal, todayEl, kind, hasFriction)
 
   return {
     dayMasterElement: dmEl,
     todayElement: todayEl,
     todayAnimal: ANIMALS[today.branchIndex],
     todayPillar: pillarShort(today),
-    relation: elementRelation(dmEl, todayEl),
-    relationKind: relationKind(dmEl, todayEl),
+    todayYearPillar: pillarShort(yearP),
+    todayMonthPillar: pillarShort(monthP),
+    relationKind: kind,
+    monthRelationKind: monthKind,
+    yearRelationKind: yearKind,
     clashLabels,
     harmonyLabels,
-    isNeutral: clashLabels.length === 0 && harmonyLabels.length === 0,
-    weekday: new Date(`${todayDate}T12:00:00Z`).getUTCDay(),
+    punishmentLabels,
+    harmLabels,
+    usefulElements: natal.useful,
+    unfavourableElements: natal.unfavourable,
+    favorableElement,
+    dayMasterStrength: natal.strength,
+    strongestThemes: pickStrongestThemes(
+      kind,
+      monthKind,
+      clashLabels,
+      harmonyLabels,
+      punishmentLabels,
+      harmLabels,
+      weekday
+    ),
+    isNeutral: !hasFriction && harmonyLabels.length === 0,
+    weekday,
   }
 }
 
-// ── Daily BaZi Context (fed to LLM) ───────────────────────────────
+function lifeAreasForRelation(kind: DailyRelationKind): string {
+  switch (kind) {
+    case 'wealth':
+      return 'money, spending, deals, exchanging effort for a concrete result'
+    case 'output':
+      return 'communication, expressing ideas, showing work, writing or speaking'
+    case 'resource':
+      return 'rest, learning, asking for help, gathering information'
+    case 'authority':
+      return 'deadlines, rules, bosses/clients, pressure to perform'
+    case 'peer':
+      return 'collaboration, comparison, matching other people’s pace'
+  }
+}
 
-export function buildDailyContext(chart: BaziChart, todayDate: string): string {
+/**
+ * Lucky colour + numbers derived from today’s useful element — never random.
+ */
+export function getDailyLuckyRitual(chart: BaziChart, todayDate: string): DailyLuckyRitual {
+  const signals = getDailySignals(chart, todayDate)
+  const colours = ELEMENT_COLOURS[signals.favorableElement]
   const [y, m, d] = todayDate.split('-').map(Number)
   const today = calcDayPillar(y, m, d)
-  const bm = baziMonth(m, d)
-  const by = baziYear(y, m, d)
-  const monthP = calcMonthPillar(bm, calcYearPillar(by).stemIndex)
+  const colour = colours[(today.stemIndex + today.branchIndex) % colours.length]
+  const fromUseful = ELEMENT_NUMBERS[signals.favorableElement]
+  const fromToday = ELEMENT_NUMBERS[signals.todayElement]
+  const first = fromUseful[0]
+  const second = fromToday[0] === first ? fromToday[1] : fromToday[0]
+  const numbers: [number, number] = [first, second === first ? fromUseful[1] : second]
+  return {
+    colour,
+    numbers,
+    sourceElement: signals.favorableElement,
+  }
+}
 
-  const dm = chart.day.stemIndex
+function describeHits(kind: string, labels: string[]): string[] {
+  return labels.map((label) => {
+    const area = PILLAR_LIFE_AREA[label] ?? label
+    if (kind === 'clash') {
+      return `- Friction with natal ${label.toLowerCase()} pillar → ${area} may feel bumpier; slow down, don’t force a confrontation.`
+    }
+    if (kind === 'harmony') {
+      return `- Support with natal ${label.toLowerCase()} pillar → ${area} can move if you keep the action small and concrete.`
+    }
+    if (kind === 'punishment') {
+      return `- Awkward loop with natal ${label.toLowerCase()} pillar → easy to repeat an old pattern in ${area}; change the next small step, not the whole story.`
+    }
+    return `- Hidden drain with natal ${label.toLowerCase()} pillar → ${area} may leak energy quietly; don’t over-commit there.`
+  })
+}
+
+// ── Daily BaZi Context (fed to LLM — internal only) ───────────────
+
+export function buildDailyContext(chart: BaziChart, todayDate: string): string {
   const signals = getDailySignals(chart, todayDate)
-  const rel = signals.relation
-
   const elements = countElements(chart)
-  const elSummary = EL_ORDER.map(el => `${el}: ${elements[el]}`).join(', ')
+  const elSummary = EL_ORDER.map((el) => `${el}: ${elements[el]}`).join(', ')
+  const ritual = getDailyLuckyRitual(chart, todayDate)
+  const hourLine = chart.hour
+    ? `Hour ${pillarShort(chart.hour)} — ${PILLAR_LIFE_AREA.Hour}`
+    : 'Hour unknown — skip evening-timing claims that need birth time.'
 
   const lines = [
-    '=== Computed BaZi (八字) Analysis ===',
-    `Day Master: ${STEMS[dm]} ${STEM_PY[dm]} (${S_POL[dm]} ${S_EL[dm]}) — ${DM_DESC[dm]}`,
-    `Birth pillars: Year ${pillarShort(chart.year)} (${ANIMALS[chart.year.branchIndex]}), Month ${pillarShort(chart.month)}, Day ${pillarShort(chart.day)}${chart.hour ? `, Hour ${pillarShort(chart.hour)}` : ''}`,
-    `Element balance: ${elSummary}`,
+    '=== INTERNAL BAZI ANALYSIS (never quote, never teach) ===',
+    `Natal self element: ${signals.dayMasterElement} (strength: ${signals.dayMasterStrength})`,
+    `Natal element balance: ${elSummary}`,
+    `Useful elements today: ${signals.usefulElements.join(', ')}`,
+    `Unfavourable elements today: ${signals.unfavourableElements.join(', ')}`,
+    `Lucky ritual source element: ${ritual.sourceElement} → colour ${ritual.colour.name} / ${ritual.colour.nameZh}, numbers ${ritual.numbers.join(', ')}`,
     '',
-    `Today's Day Pillar: ${pillarShort(today)} (${S_POL[today.stemIndex]} ${S_EL[today.stemIndex]}, ${ANIMALS[today.branchIndex]})`,
-    `Today → Day Master interaction: ${rel}`,
+    'Natal pillars and life areas:',
+    `- Year ${pillarShort(chart.year)} (${ANIMALS[chart.year.branchIndex]}) — ${PILLAR_LIFE_AREA.Year}`,
+    `- Month ${pillarShort(chart.month)} (${ANIMALS[chart.month.branchIndex]}) — ${PILLAR_LIFE_AREA.Month}`,
+    `- Day ${pillarShort(chart.day)} (${ANIMALS[chart.day.branchIndex]}) — ${PILLAR_LIFE_AREA.Day}`,
+    `- ${hourLine}`,
+    '',
+    "Today's pillars (the date being read):",
+    `- Year ${signals.todayYearPillar} — background tone: ${lifeAreasForRelation(signals.yearRelationKind)}`,
+    `- Month ${signals.todayMonthPillar} — this month's overlay: ${lifeAreasForRelation(signals.monthRelationKind)}`,
+    `- Day ${signals.todayPillar} (${signals.todayAnimal}) — strongest daily tone: ${lifeAreasForRelation(signals.relationKind)}`,
+    '',
+    `Today's animal tone: ${signals.todayAnimal} — ${ANIMAL_TONE[signals.todayAnimal] ?? 'mixed pacing'}`,
   ]
 
-  if (signals.clashLabels.length > 0) {
-    lines.push('')
-    for (const label of signals.clashLabels) {
-      lines.push(
-        `⚠️ Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) CLASHES with user's ${label} — tension in ${label.toLowerCase()}-related matters`
-      )
-    }
-  }
-  if (signals.harmonyLabels.length > 0) {
-    lines.push('')
-    for (const label of signals.harmonyLabels) {
-      lines.push(
-        `✅ Today's ${BRANCHES[today.branchIndex]} (${ANIMALS[today.branchIndex]}) HARMONIZES with user's ${label} — smooth energy in ${label.toLowerCase()}-related matters`
-      )
-    }
-  }
-  if (signals.isNeutral) {
-    lines.push('No major branch clashes or harmonies today — neutral flow.')
+  const hits = [
+    ...describeHits('clash', signals.clashLabels),
+    ...describeHits('harmony', signals.harmonyLabels),
+    ...describeHits('punishment', signals.punishmentLabels),
+    ...describeHits('harm', signals.harmLabels),
+  ]
+  if (hits.length > 0) {
+    lines.push('', 'Interactions between today and natal chart:')
+    lines.push(...hits)
+  } else {
+    lines.push('', 'No sharp clash/harmony today — the day can feel relatively steady. Still give one specific heads-up from today’s animal + daily tone. Do not say “no signal” or “energy is weak”.')
   }
 
-  lines.push('', `Current month energy: ${pillarShort(monthP)} (${S_EL[monthP.stemIndex]} ${ANIMALS[monthP.branchIndex]})`)
-  lines.push('=== End BaZi Analysis ===')
+  lines.push(
+    '',
+    `Strongest 2–3 signals to write about (do NOT force a full life-area menu): ${signals.strongestThemes.join('; ')}`,
+    '=== END INTERNAL BAZI ANALYSIS ==='
+  )
   return lines.join('\n')
 }
 
 // ── Telegram Display Format ────────────────────────────────────────
 
-import type { AstroProfile } from './astrology'
 import { formatAstroProfile, getAstroProfile } from './astrology'
 
 export function formatCosmicId(profile: BaziProfile, dateOfBirth: string, todayDate: string): string {

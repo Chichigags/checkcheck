@@ -22,82 +22,46 @@ export function formatQuestionPrompt(question: QuestionConfig, step: number, tot
   return lines.join('\n')
 }
 
-const MODULE_EMOJI: Record<string, string> = {
-  keyword: '🔑',
-  worth_doing: '✅',
-  not_to_do: '🚫',
-  do_dont: '⚖️',
-  work: '💼',
-  relationship: '💞',
-  social: '👋',
-  spending: '💸',
-  emotional: '🫧',
-  social_vs_solo: '🧍',
-  action_mode: '🧭',
-  best_window: '☀️',
-  hard_window: '⛈️',
-  what_to_wear: '👗',
-  what_to_eat: '🍜',
-  one_sentence: '📝',
-  small_challenge: '🎯',
-  lunar: '🌙',
-  transit: '🪐',
-  romance: '💕',
-  career: '💼',
-  conflict: '⚡',
+function paragraphsFromMessage(message: DailyMessage): string[] {
+  if (message.paragraphs && message.paragraphs.length > 0) {
+    return message.paragraphs.filter(Boolean).slice(0, 3)
+  }
+
+  const collected: string[] = []
+  if (message.body) {
+    collected.push(...message.body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean))
+  }
+  for (const module of message.modules ?? []) {
+    if (module.message.trim()) collected.push(module.message.trim())
+  }
+  if (collected.length > 0) return collected.slice(0, 3)
+  return [message.dailyLuck, message.watchOut].filter((p): p is string => Boolean(p)).slice(0, 3)
+}
+
+export function formatLuckyFooter(message: DailyMessage): string {
+  const lang = normalizeAppLanguage(message.language)
+  const numbers = Array.isArray(message.luckyNumber) ? message.luckyNumber : [7, 23]
+  const numberText = isChinese(lang) ? numbers.join('、') : numbers.join(', ')
+  const sep = isChinese(lang) ? '：' : ': '
+  return [
+    `🎨 ${t.luckyColour(lang)}${sep}${message.luckyColour.name}`,
+    `🔢 ${t.luckyNumber(lang)}${sep}${numberText}`,
+  ].join('\n')
 }
 
 export function formatDailyMessage(message: DailyMessage): string {
   const lang = normalizeAppLanguage(message.language)
+  const takeaway = (message.headline || message.todayVibe || '').trim()
+  const dateLabel = t.formatDailyDate(message.date, lang)
+  const sep = isChinese(lang) ? '｜' : ' | '
+  const headline = takeaway ? `${dateLabel}${sep}${takeaway}` : dateLabel
+  const paragraphs = paragraphsFromMessage(message)
 
-  // New schema
-  if (message.headline || (message.modules && message.modules.length > 0)) {
-    const lines = [`💫 ${message.headline || message.todayVibe || ''}`]
-    if (message.body) {
-      lines.push('', message.body)
-    }
-
-    for (const module of message.modules ?? []) {
-      const emoji = MODULE_EMOJI[module.type] ?? '•'
-      lines.push('', `${emoji} ${module.title}`, module.message)
-    }
-
-    lines.push('', t.haveAGreatDay(lang))
-    return lines.join('\n')
+  const lines = [headline]
+  for (const paragraph of paragraphs) {
+    lines.push('', paragraph)
   }
-
-  // Legacy schema fallback
-  const vibe = message.todayVibe || 'Go with the flow today.'
-  const lines = [
-    `💫 "${vibe}"`,
-    '',
-    `🍀 Daily Luck: ${message.dailyLuck ?? ''}`,
-    '',
-    `⚠️ Watch Out: ${message.watchOut ?? ''}`,
-    '',
-    `😄 Daily Fun: ${message.dailyFun ?? ''}`,
-  ]
-
-  if (message.dailyInspiration) {
-    lines.push('', `💬 Daily Inspiration: ${message.dailyInspiration}`)
-  }
-
-  if (message.triggeredModules && message.triggeredModules.length > 0) {
-    message.triggeredModules.forEach((module) => {
-      lines.push('')
-      const emoji = MODULE_EMOJI[module.type] ?? '⚡'
-      if (module.type === 'lunar') {
-        lines.push(`${emoji} ${module.title} · ${module.phase}`)
-      } else if (module.type === 'transit') {
-        lines.push(`${emoji} ${module.title} · ${module.planet}`)
-      } else {
-        lines.push(`${emoji} ${module.title}`)
-      }
-      lines.push(module.message)
-    })
-  }
-
-  lines.push('', t.haveAGreatDay(lang))
+  lines.push('', formatLuckyFooter(message))
   return lines.join('\n')
 }
 
