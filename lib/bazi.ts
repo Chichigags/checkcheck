@@ -373,31 +373,31 @@ function relationKind(dm: BaziElement, other: BaziElement): DailyRelationKind {
   return 'authority'
 }
 
-function themeForRelation(kind: DailyRelationKind): string[] {
+function themeForRelation(kind: DailyRelationKind, weekend: boolean): string[] {
   switch (kind) {
     case 'wealth':
       return ['money', 'impulse spending']
     case 'output':
-      return ['communication', 'expression']
+      return weekend ? ['conversation', 'expression'] : ['communication', 'expression']
     case 'resource':
       return ['rest', 'learning']
     case 'authority':
-      return ['work', 'pressure']
+      return weekend ? ['boundaries', 'pacing'] : ['work', 'pressure']
     case 'peer':
-      return ['collaboration', 'comparison']
+      return weekend ? ['company', 'comparison'] : ['collaboration', 'comparison']
   }
 }
 
-function themeForPillar(label: string): string {
+function themeForPillar(label: string, weekend: boolean): string {
   switch (label) {
     case 'Year':
       return 'family / long-term plans'
     case 'Month':
-      return 'work'
+      return weekend ? 'home / rest rhythm' : 'work'
     case 'Day':
       return 'mood / close relationships'
     case 'Hour':
-      return 'schedule / evening energy'
+      return weekend ? 'evening energy / sleep' : 'schedule / evening energy'
     default:
       return 'pacing'
   }
@@ -457,27 +457,28 @@ function pickStrongestThemes(
   harmLabels: string[],
   weekday: number
 ): string[] {
+  const weekend = weekday === 0 || weekday === 6
   const themes: string[] = []
   const add = (theme: string) => {
     if (theme && !themes.includes(theme)) themes.push(theme)
   }
 
-  add(themeForRelation(relationKindToday)[0])
+  add(themeForRelation(relationKindToday, weekend)[0])
 
   const friction = [...punishmentLabels, ...harmLabels, ...clashLabels]
-  if (friction[0]) add(themeForPillar(friction[0]))
-  else if (harmonyLabels[0]) add(themeForPillar(harmonyLabels[0]))
+  if (friction[0]) add(themeForPillar(friction[0], weekend))
+  else if (harmonyLabels[0]) add(themeForPillar(harmonyLabels[0], weekend))
 
   if (monthKind !== relationKindToday && (monthKind === 'wealth' || monthKind === 'authority')) {
-    add(themeForRelation(monthKind)[0])
+    add(themeForRelation(monthKind, weekend)[0])
   }
 
   if (themes.length < 2) {
-    add(themeForRelation(relationKindToday)[1])
+    add(themeForRelation(relationKindToday, weekend)[1])
   }
 
   if (themes.length < 2) {
-    add(weekday === 0 || weekday === 6 ? 'pacing' : 'finishing work')
+    add(weekend ? 'pacing' : 'finishing work')
   }
 
   return themes.slice(0, 3)
@@ -553,18 +554,26 @@ export function getDailySignals(chart: BaziChart, todayDate: string): DailyBaziS
   }
 }
 
-function lifeAreasForRelation(kind: DailyRelationKind): string {
+function lifeAreasForRelation(kind: DailyRelationKind, weekend: boolean): string {
   switch (kind) {
     case 'wealth':
-      return 'money, spending, deals, exchanging effort for a concrete result'
+      return weekend
+        ? 'spending, bargains, treating yourself or others without opening a big new plan'
+        : 'money, spending, deals, exchanging effort for a concrete result'
     case 'output':
-      return 'communication, expressing ideas, showing work, writing or speaking'
+      return weekend
+        ? 'saying what you mean to people close to you, then stopping'
+        : 'communication, expressing ideas, writing or speaking'
     case 'resource':
       return 'rest, learning, asking for help, gathering information'
     case 'authority':
-      return 'deadlines, rules, bosses/clients, pressure to perform'
+      return weekend
+        ? 'boundaries at home, not picking a fight over who is right'
+        : 'deadlines, rules, bosses/clients, pressure to perform'
     case 'peer':
-      return 'collaboration, comparison, matching other people’s pace'
+      return weekend
+        ? 'short company, skipping comparison on social media or with friends'
+        : 'collaboration, comparison, matching other people’s pace'
   }
 }
 
@@ -609,15 +618,22 @@ function describeHits(kind: string, labels: string[]): string[] {
 
 export function buildDailyContext(chart: BaziChart, todayDate: string): string {
   const signals = getDailySignals(chart, todayDate)
+  const weekend = signals.weekday === 0 || signals.weekday === 6
   const elements = countElements(chart)
   const elSummary = EL_ORDER.map((el) => `${el}: ${elements[el]}`).join(', ')
   const ritual = getDailyLuckyRitual(chart, todayDate)
   const hourLine = chart.hour
     ? `Hour ${pillarShort(chart.hour)} — ${PILLAR_LIFE_AREA.Hour}`
     : 'Hour unknown — skip evening-timing claims that need birth time.'
+  const monthArea = weekend
+    ? 'home rhythm, this season of life, or how you rest'
+    : PILLAR_LIFE_AREA.Month
 
   const lines = [
     '=== INTERNAL BAZI ANALYSIS (never quote, never teach) ===',
+    weekend
+      ? 'Day context: WEEKEND. Do not write about the job. Map any work-flavoured signal to rest, home, family, friends, body, or spending.'
+      : 'Day context: WEEKDAY. Work and career are allowed when the signals point there.',
     `Natal self element: ${signals.dayMasterElement} (strength: ${signals.dayMasterStrength})`,
     `Natal element balance: ${elSummary}`,
     `Useful elements today: ${signals.usefulElements.join(', ')}`,
@@ -626,14 +642,14 @@ export function buildDailyContext(chart: BaziChart, todayDate: string): string {
     '',
     'Natal pillars and life areas:',
     `- Year ${pillarShort(chart.year)} (${ANIMALS[chart.year.branchIndex]}) — ${PILLAR_LIFE_AREA.Year}`,
-    `- Month ${pillarShort(chart.month)} (${ANIMALS[chart.month.branchIndex]}) — ${PILLAR_LIFE_AREA.Month}`,
+    `- Month ${pillarShort(chart.month)} (${ANIMALS[chart.month.branchIndex]}) — ${monthArea}`,
     `- Day ${pillarShort(chart.day)} (${ANIMALS[chart.day.branchIndex]}) — ${PILLAR_LIFE_AREA.Day}`,
     `- ${hourLine}`,
     '',
     "Today's pillars (the date being read):",
-    `- Year ${signals.todayYearPillar} — background tone: ${lifeAreasForRelation(signals.yearRelationKind)}`,
-    `- Month ${signals.todayMonthPillar} — this month's overlay: ${lifeAreasForRelation(signals.monthRelationKind)}`,
-    `- Day ${signals.todayPillar} (${signals.todayAnimal}) — strongest daily tone: ${lifeAreasForRelation(signals.relationKind)}`,
+    `- Year ${signals.todayYearPillar} — background tone: ${lifeAreasForRelation(signals.yearRelationKind, weekend)}`,
+    `- Month ${signals.todayMonthPillar} — this month's overlay: ${lifeAreasForRelation(signals.monthRelationKind, weekend)}`,
+    `- Day ${signals.todayPillar} (${signals.todayAnimal}) — strongest daily tone: ${lifeAreasForRelation(signals.relationKind, weekend)}`,
     '',
     `Today's animal tone: ${signals.todayAnimal} — ${ANIMAL_TONE[signals.todayAnimal] ?? 'mixed pacing'}`,
   ]

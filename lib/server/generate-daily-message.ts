@@ -3,13 +3,16 @@ import type { DailyMessage } from '@/lib/generate-mock-message'
 import { generateMockMessage } from '@/lib/generate-mock-message'
 import { isChinese, messageMatchesAppLanguage, normalizeAppLanguage } from '@/lib/i18n'
 import type { UserProfile } from '@/lib/profile'
+import {
+  containsWorkCareerTalk,
+  dayContextPrompt,
+  isWeekendDate,
+  isWorkCareerTopic,
+  weekdayLongName,
+} from '@/lib/weekday'
 import { chatCompletion } from './openrouter'
 import type { DailyMessageRecord } from './types'
 import { fetchLocalWeatherForecast } from './weather'
-
-function dayOfWeek(date: string): string {
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
-}
 
 function summarizeHistory(records: DailyMessageRecord[]): string {
   if (!records.length) return 'No recent messages.'
@@ -54,6 +57,7 @@ function buildSystemPrompt(language: ReturnType<typeof normalizeAppLanguage>): s
 2. 只写今天最强的 2–3 个信号。不要每天都写事业、金钱、健康、感情、饮食、社交。
 3. 只给结论，不给计算过程。
 4. 平稳的日子也可以，但仍要给一个具体提醒。
+5. 按星期写：周一到周五可以写工作、事业、沟通、收尾；周六周日不要写工作或职场，改写休息、身体、家人朋友、花钱、家里的事。
 
 结构：
 - headline：一句今天的结论，不要带日期，不要带名字。例如：今天适合收尾，不适合想太多
@@ -97,6 +101,7 @@ PROCESS (internal):
 2. Pick the 2–3 strongest signals for THIS date. Do not force the same categories every day.
 3. Write the conclusion only — never the calculation.
 4. Ordinary / relatively steady days are allowed. Still give one specific, useful heads-up.
+5. Follow the weekday: Monday–Friday may cover work, career, finishing a task, or handling pressure. Saturday and Sunday must not mention work, the job, office, boss, colleagues, clients, meetings, or deadlines — write rest, body, family, friends, spending, or home instead.
 
 STRUCTURE:
 - headline: a short takeaway for today. No date prefix. No name. Example: Finish what you started
@@ -124,11 +129,12 @@ function buildUserPrompt(
   const signals = getDailySignals(chart, date)
   const ritual = getDailyLuckyRitual(chart, date)
   const language = normalizeAppLanguage(profile.languagePreference)
-  const weekday = dayOfWeek(date)
+  const weekday = weekdayLongName(date)
   const zh = language === '中文'
 
   const parts = [
     `Write today’s CheckCheck for ${date} (${weekday}).`,
+    dayContextPrompt(date, zh),
     '',
     'User (for context only — do not greet by name unless it helps a sentence):',
     `- Name: ${profile.nickname || profile.legalName}`,
@@ -138,7 +144,13 @@ function buildUserPrompt(
   ]
 
   if (profile.relationshipStatus) parts.push(`- Relationship: ${profile.relationshipStatus}`)
-  if (profile.lifeFocus) parts.push(`- Life focus: ${profile.lifeFocus}`)
+  if (profile.lifeFocus) {
+    if (isWeekendDate(date) && profile.lifeFocus === 'Career') {
+      parts.push('- Life focus: Career (weekend override: do not write about the job today)')
+    } else {
+      parts.push(`- Life focus: ${profile.lifeFocus}`)
+    }
+  }
 
   parts.push(
     '',
@@ -229,6 +241,12 @@ function parseLlmResponse(raw: string, profile: UserProfile, date: string): Dail
   }
   if (languageMismatch([headline, ...paragraphs].join('\n'), language)) {
     throw new Error('LLM output did not match app language')
+  }
+  if (isWeekendDate(date)) {
+    const visible = [headline, ...paragraphs, ...focusTopics].join('\n')
+    if (containsWorkCareerTalk(visible) || focusTopics.some(isWorkCareerTopic)) {
+      throw new Error('LLM output used work/career topics on a weekend')
+    }
   }
 
   return {
