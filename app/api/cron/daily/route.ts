@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { runDailyDispatch } from '@/lib/server/cron'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) return false
 
   const bearer = request.headers.get('authorization')
   const xSecret = request.headers.get('x-cron-secret')

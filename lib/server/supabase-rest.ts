@@ -75,6 +75,7 @@ export async function supabaseRestRequest<T>(options: SupabaseRestRequestOptions
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
   })
 
   const raw = await response.text()

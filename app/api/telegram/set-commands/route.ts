@@ -5,7 +5,7 @@ export const runtime = 'nodejs'
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) return false
 
   const bearer = request.headers.get('authorization')
   const xSecret = request.headers.get('x-cron-secret')
