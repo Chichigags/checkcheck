@@ -12,6 +12,8 @@ async function run() {
     ('00000000-0000-0000-0000-000000000002',true,'stopped',null,'Asia/Singapore','Morning',now());`)
   const migration = fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261013_news.sql'), 'utf8')
   await db.exec(migration); await db.exec(migration)
+  const daily = fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261013_news_daily.sql'), 'utf8')
+  await db.exec(daily); await db.exec(daily)
   assert.equal((await db.query('select * from profiles')).rows.length, 2)
   assert.equal((await db.query('select * from news_subscriptions')).rows.length, 1)
   const date = '2026-10-13'
@@ -25,8 +27,10 @@ async function run() {
   assert.equal(await finish(first), false); assert.equal(await finish(replacement), true)
   assert.equal(await claim(), null)
   const id = '00000000-0000-0000-0000-000000000001'
+  assert.equal((await db.query('select * from news_dispatch_candidates($1)', [date])).rows.length, 1)
   const delivery = async () => (await db.query('select claim_news_delivery($1,$2) as claimed', [id,date])).rows[0].claimed
   const claims = await Promise.all([delivery(), delivery()]); assert.deepEqual(claims, [true,false])
+  assert.equal((await db.query('select * from news_dispatch_candidates($1)', [date])).rows.length, 0)
   await db.exec(`grant select on news_editions,news_subscriptions,news_deliveries to anon; set role anon;`)
   assert.equal((await db.query('select * from news_editions')).rows.length, 0)
   await assert.rejects(db.query('select claim_news_edition($1)', [date]), /permission denied/)

@@ -21,5 +21,6 @@ export async function recentEditions(): Promise<Edition[]> {
   return rows.map(r => r.payload)
 }
 export async function dueSubscriptions(now: Date, limit = 50): Promise<Array<Subscription & { profiles: ProfileRecord }>> {
-  return rest({ path: '/rest/v1/news_subscriptions', query: { select: '*,profiles!inner(*)', active: 'eq.true', next_delivery_at: `lte.${now.toISOString()}`, or: `(paused_until.is.null,paused_until.lte.${now.toISOString()})`, order: 'next_delivery_at.asc', limit } })
+  const { editionDate } = await import('./content')
+  return rest({ method: 'POST', path: '/rest/v1/rpc/news_dispatch_candidates', body: { p_date: editionDate(now), p_limit: limit } })
 }

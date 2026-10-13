@@ -52,7 +52,7 @@ process.env.TELEGRAM_BOT_TOKEN = 'test-only'
 process.env.BOT_MODE = 'news'
 const { dispatchNews } = require('../lib/server/news/dispatch.ts')
 const { handleNewsUpdate } = require('../lib/server/news/bot.ts')
-const { produceNews } = require('../lib/server/news/production.ts')
+const { ingestEdition } = require('../lib/server/news/ingest.ts')
 const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
 function mock(handler) { const old = global.fetch; global.fetch = async (url, options = {}) => handler(new URL(url), options, options.body ? JSON.parse(options.body) : undefined); return () => { global.fetch = old } }
 const sub = { profile_id: 'p1', active: true, paused_until: null, timezone: 'Asia/Singapore', delivery_time: 'Morning', next_delivery_at: '2026-10-13T00:00:00Z', interests: '', awaiting_interests: false, profiles: { id: 'p1', telegram_user_id: 1 } }
@@ -61,6 +61,7 @@ test('dispatch claims once, checkpoints all parts, and advances schedule', async
  let claimed = false, sends = 0, patches = [], schedules = 0
  const restore = mock((u, o, b) => {
   if (u.pathname.endsWith('news_editions')) return json([{ payload: edition }])
+  if (u.pathname.endsWith('news_dispatch_candidates')) return json([sub])
   if (u.pathname.endsWith('news_subscriptions')) { if (o.method === 'POST') { schedules++; return json(null) } return json([sub]) }
   if (u.pathname.endsWith('claim_news_delivery')) { const result = !claimed; claimed = true; return json(result) }
   if (u.hostname === 'api.telegram.org') { sends++; return json({ ok: true }) }
@@ -79,6 +80,7 @@ test('ambiguous Telegram failure is quarantined and never blindly retried', asyn
  let claimed = false, sends = 0, status
  const restore = mock((u, o, b) => {
   if (u.pathname.endsWith('news_editions')) return json([{ payload: edition }])
+  if (u.pathname.endsWith('news_dispatch_candidates')) return json([sub])
   if (u.pathname.endsWith('news_subscriptions')) return json(o.method === 'POST' ? null : [sub])
   if (u.pathname.endsWith('claim_news_delivery')) { const result = !claimed; claimed = true; return json(result) }
   if (u.hostname === 'api.telegram.org') { sends++; throw new Error('Timeout after possible delivery') }
@@ -92,7 +94,8 @@ test('empty editions send nothing; unavailable editions leave schedules alone', 
   let sends = 0
   const restore = mock((u, o) => {
    if (u.pathname.endsWith('news_editions')) return json(payload ? [{ payload }] : [])
-   if (u.pathname.endsWith('news_subscriptions')) return json(o.method === 'POST' ? null : [sub])
+   if (u.pathname.endsWith('news_dispatch_candidates')) return json([sub])
+  if (u.pathname.endsWith('news_subscriptions')) return json(o.method === 'POST' ? null : [sub])
    sends++; throw new Error('Unexpected send')
   })
   try { const result = await dispatchNews(now); assert.equal(result.sent, 0); assert.equal(sends, 0) } finally { restore() }
@@ -103,6 +106,7 @@ test('news /start avoids birth onboarding and /interests does not promise person
  const restore = mock((u, o, b) => {
   if (u.pathname.endsWith('telegram_updates')) return json(null)
   if (u.pathname.endsWith('profiles')) return json([{ id: 'p1', telegram_username: null }])
+  if (u.pathname.endsWith('news_dispatch_candidates')) return json([sub])
   if (u.pathname.endsWith('news_subscriptions')) { if (o.method === 'POST') { writes.push(b); Object.assign(subscription, b); return json(null) } return json([subscription]) }
   if (u.pathname.endsWith('news_editions')) return json([{ payload: edition }])
   if (u.hostname === 'api.telegram.org') { messages.push(b.text); return json({ ok: true }) }
@@ -117,70 +121,14 @@ test('news /start avoids birth onboarding and /interests does not promise person
   await handleNewsUpdate(update('/pause 2abc')); assert.match(messages.at(-1), /Use \/pause/)
  } finally { restore() }
 })
-test('failed search releases production claim without publishing invented news', async () => {
- process.env.TAVILY_API_KEY = 'test-only'
- let released = false, published = false
- const restore = mock((u) => {
-  if (u.pathname.endsWith('news_editions')) return json([])
-  if (u.pathname.endsWith('claim_news_edition')) return json('token')
-  if (u.pathname.endsWith('fail_news_edition')) { released = true; return json(null) }
-  if (u.pathname.endsWith('finish_news_edition')) { published = true; return json(true) }
-  if (u.hostname === 'api.tavily.com') return new Response('', { status: 503 })
-  throw new Error('Unexpected request')
- })
- try { await assert.rejects(produceNews(now)); assert.ok(released); assert.equal(published, false) } finally { restore() }
-})
 
-test('production stores verified evidence once, with no per-user generation', async () => {
- process.env.NEWS_MODEL = 'test-model'; process.env.OPENROUTER_API_KEY = 'test-only'
- process.env.NEWS_SOURCE_DOMAINS = 'example.com,publisher.org'
- let stored, models = 0, searches = 0
- const restore = mock((u, o, b) => {
-  if (u.pathname.endsWith('news_editions')) return json(stored ? [{ payload: stored }] : [])
-  if (u.pathname.endsWith('claim_news_edition')) return json('token')
-  if (u.pathname.endsWith('finish_news_edition')) { stored = b.p_payload; return json(true) }
-  if (u.hostname === 'api.tavily.com') { searches++; assert.equal(b.include_published_date, true); return json({ results: sources.map(s => ({ title: s.title, url: s.url, published_date: s.publishedAt, raw_content: s.content })) }) }
-  if (u.hostname === 'openrouter.ai') {
-   models++
-   const result = models === 1 ? { stories: [{ ...story, sourceIds: ['s1', 's2'] }] } : { approvedKeys: ['event'], worthApproved: false }
-   return json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(result) } }] })
-  }
-  throw new Error('Unexpected request ' + u)
- })
- try {
-  assert.equal((await produceNews(now)).status, 'ready'); assert.equal(stored.sources.length, 2); assert.equal(stored.messages.length, 2)
-  assert.equal((await produceNews(now)).status, 'exists'); assert.equal(models, 2); assert.equal(searches, 3)
- } finally { restore(); delete process.env.NEWS_SOURCE_DOMAINS }
-})
-test('independent reviewer can reject all stories, saving an empty edition', async () => {
- process.env.NEWS_SOURCE_DOMAINS = 'example.com,publisher.org'
- let stored, models = 0
- const restore = mock((u, o, b) => {
-  if (u.pathname.endsWith('news_editions')) return json([])
-  if (u.pathname.endsWith('claim_news_edition')) return json('token')
-  if (u.pathname.endsWith('finish_news_edition')) { stored = b.p_payload; return json(true) }
-  if (u.hostname === 'api.tavily.com') return json({ results: sources.map(s => ({ title: s.title, url: s.url, published_date: s.publishedAt, raw_content: s.content })) })
-  if (u.hostname === 'openrouter.ai') {
-   models++
-   return json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(models === 1 ? { stories: [{ ...story, sourceIds: ['s1', 's2'] }] } : { approvedKeys: [], worthApproved: false }) } }] })
-  }
-  throw new Error('Unexpected request')
- })
- try { assert.equal((await produceNews(now)).status, 'empty'); assert.deepEqual(stored.messages, []); assert.equal(models, 2) } finally { restore(); delete process.env.NEWS_SOURCE_DOMAINS }
-})
-test('busy production claim does no paid work', async () => {
- let requests = 0
- const restore = mock(u => { requests++; if (u.pathname.endsWith('news_editions')) return json([]); if (u.pathname.endsWith('claim_news_edition')) return json(null); throw new Error('Unexpected paid work') })
- try { assert.equal((await produceNews(now)).status, 'busy'); assert.equal(requests, 2) } finally { restore() }
-})
-test('paused and inactive subscriptions are filtered by database query', async () => {
+
+
+
+
+test('daily candidates use one edition rather than per-user delivery timestamps', async () => {
  const { dueSubscriptions } = require('../lib/server/news/storage.ts')
- const restore = mock(u => {
-  assert.equal(u.searchParams.get('active'), 'eq.true')
-  assert.equal(u.searchParams.get('next_delivery_at'), `lte.${now.toISOString()}`)
-  assert.equal(u.searchParams.get('or'), `(paused_until.is.null,paused_until.lte.${now.toISOString()})`)
-  return json([])
- })
+ const restore = mock((u,o,b) => { assert.ok(u.pathname.endsWith('news_dispatch_candidates')); assert.equal(b.p_date, '2026-10-13'); return json([]) })
  try { assert.deepEqual(await dueSubscriptions(now), []) } finally { restore() }
 })
 
@@ -216,8 +164,35 @@ test('cron, menu and webhook endpoints fail closed without secrets', async () =>
  try {
   const req = new NextRequest('https://example.com/api/test')
   assert.equal((await daily.GET(req)).status, 401)
-  assert.equal((await news.GET(req)).status, 401)
+  assert.equal((await news.GET(req)).status, 410)
   assert.equal((await menu.GET(req)).status, 401)
   assert.equal((await webhook.POST(req)).status, 401)
  } finally { restore() }
+})
+
+test('assistant-authored upload validates and saves, without search or model calls', async () => {
+ let saved
+ const restore = mock((u,o,b) => {
+  assert.equal(u.hostname, 'db.example')
+  if (u.pathname.endsWith('news_editions')) return json([])
+  if (u.pathname.endsWith('claim_news_edition')) return json('token')
+  if (u.pathname.endsWith('finish_news_edition')) { saved = b.p_payload; return json(true) }
+  throw new Error('Unexpected request ' + u)
+ })
+ try {
+  assert.equal((await ingestEdition({ date: edition.date, sources, draft: { stories: [story] } }, now)).status, 'ready')
+  assert.equal(saved.messages.length, 2)
+  await assert.rejects(ingestEdition({ date: '2026-10-12', sources, draft: { stories: [] } }, now), /Only today/)
+  await assert.rejects(ingestEdition({ date: edition.date, sources: [sources[0], sources[0]], draft: { stories: [] } }, now), /Duplicate source IDs/)
+ } finally { restore() }
+})
+test('empty or insufficiently corroborated assistant edition sends no filler', async () => {
+ let saved
+ const restore = mock((u,o,b) => {
+  if (u.pathname.endsWith('news_editions')) return json([])
+  if (u.pathname.endsWith('claim_news_edition')) return json('token')
+  if (u.pathname.endsWith('finish_news_edition')) { saved = b.p_payload; return json(true) }
+  throw new Error('Unexpected request')
+ })
+ try { assert.equal((await ingestEdition({ date: edition.date, sources: sources.slice(0,1), draft: { stories: [story] } }, now)).status, 'empty'); assert.deepEqual(saved.messages, []) } finally { restore() }
 })

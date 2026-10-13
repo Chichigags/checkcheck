@@ -1,132 +1,94 @@
-# Check Check V5 — automatic English news
+# Check Check V5 — assistant-authored daily news
 
-## Product contract (2026-10-13)
+## Current product contract
+
+The assistant researches, verifies and writes one English edition daily using its built-in
+web tools and existing ChatGPT/Codex allowance. The server receives the finished edition
+and sends it through the existing Telegram Bot once daily. No Tavily, OpenRouter or other
+paid generation API is invoked by the news server. No subscription upgrade, credit purchase
+or automatic recharge is authorized. Usage of the assistant still consumes account allowance.
 
 CHECK CHECK · Global AI. Asian Perspective. · Follow the Substance, Not the Hype.
 Know Something. Have Something to Say.
+Today in 30 Seconds; up to three AI & Business / Fun to Know stories; optional One Thing
+Worth Your Time. Hooks, story, interesting part, implications and source links are in English.
+Interests are collected, but Picked for You is not live. Zero qualified stories means no send.
+One daily edition may be split into consecutive Telegram messages for readability.
 
-Reuse the existing Telegram Bot, direct messages and delivery slots. Everyone receives
-one shared English edition: Today in 30 Seconds; up to three AI & Business / Fun to Know
-stories; optional One Thing Worth Your Time (Following / Trying / Saving).
-Stories use Hook → The Story → optional The Interesting Part → Why It Matters → Sources.
-Quality takes priority over quantity; no qualified stories means no automatic send.
-Interests are stored now. Picked for You, banners and share cards are future work.
+## Architecture
 
-## Architecture and preservation
+Scheduled assistant (07:30 Singapore) → authenticated edition upload → Supabase cache →
+once-daily Vercel dispatcher (08:00–09:00 Singapore) → existing Telegram Bot subscribers.
+Vercel Hobby has a one-hour scheduling window; exact 08:00 delivery is not promised.
+Local assistant tasks need this computer on and the app running. This is not cloud-only,
+always-on operation. Account/tool access and sandbox permissions must allow unattended runs.
 
-The inspected origin/main and backup-bazi-before-news-2026-10-13 both point to
-6daae50. The existing app is Next.js 16 / React 19, Supabase REST and Vercel cron.
-There was no news pipeline. The old cron generated a personalized BaZi reading per
-profile, then advanced next_delivery_at. Bot onboarding required birth information.
+POST /api/news/edition receives {date,sources,draft}. GET on the same endpoint returns today's
+edition and 14 recent editions for repeat checks. Both require NEWS_INGEST_SECRET and
+BOT_MODE=news. Uploads are bounded, restricted to today's Singapore date, validate two
+publisher domains per story, source dates within 48h, unique evidence IDs, safe URLs,
+content shape, repeat keys/URLs and Telegram lengths. Fact verification is the assistant's
+editorial responsibility: the server validates evidence structure, not semantic truth.
+Client-supplied rendered messages are never trusted; the server renders its own messages.
 
-V5 adds lib/server/news/{config,content,storage,production,dispatch,bot}.ts.
-The same webhook and daily dispatcher route switch on BOT_MODE=news. With BOT_MODE=bazi
-(or unset), the original handlers and readings remain available. Existing BaZi engines,
-UI pages, profiles, bot_state and daily_messages are retained. News owns separate
-news_subscriptions, news_editions and news_deliveries tables. The backup branch is untouched.
-Existing completed active subscribers with delivery timestamps are copied into the new
-subscription table by the additive migration; stopped/incomplete users are not activated.
-Changes to news delivery settings never modify birth profiles or old delivery settings.
+Atomic edition claims prevent concurrent writes; a completed edition is immutable.
+The retired /api/cron/news endpoint returns 410 and performs no paid work.
+vercel.json contains only one cron: /api/cron/daily at 00:00 UTC every day.
+News candidates are active and not paused, excluding every claimed delivery for this edition.
+Individual timezone/delivery settings do not affect news sends. Existing BaZi settings remain.
+The dispatcher drains candidates in batches of 50 within a bounded runtime. At higher
+subscriber counts, measure throughput and ensure the daily invocation completes the queue;
+if it cannot, change the batch architecture before launch to that audience. Do not claim
+unlimited delivery capacity. The agent must not invent extra routine push schedules.
 
-Production searches three subjects via Tavily, restricting publishers to a configured
-allowlist. Only HTTPS sources with raw article evidence and a valid publication date
-within 48 hours are accepted. An OpenRouter editor selects and writes, a second request
-independently reviews the draft against the evidence, and local schema/source/date/size
-checks reject invalid content. Two distinct publisher domains are mandatory; the reviewer
-must additionally reject syndicated reports. Model review is probabilistic, not a guarantee
-of truth. Search failures do not become an empty edition; they fail and can retry.
-Empty editions are deliberately saved so the system does not keep paying to fill quotas.
+Delivery claims and per-message checkpoints prevent concurrent duplicates. Telegram lacks
+sendMessage idempotency: timeout/crash deliveries require operator inspection, never blind
+replay. /today allows an explicit user-requested repeat. If today's edition is unavailable,
+no yesterday edition or fabricated filler is sent; upload itself never triggers a broadcast.
 
-Editions save evidence, source dates, URLs and rendered messages. Recent 14 editions are
-provided for semantic repeat checks; stable event keys and source URLs enforce exact
-repeat rejection. Evidence and model input are treated as untrusted data.
+## Setup
 
-An atomic database production claim with a 15-minute lease prevents concurrent runs.
-Token-fenced completion discards results from expired owners. Failed production releases
-its claim for retry. The webhook never invokes paid generation; /today reads the cache.
-Atomic per-profile/edition delivery claims prevent overlapping cron requests from
-sending the same edition twice. Parts are checkpointed after Telegram confirms each one.
+1. pnpm install --frozen-lockfile; pnpm test; pnpm typecheck; pnpm build.
+2. Apply supabase/migrations/20261013_news.sql, then 20261013_news_daily.sql.
+   Fresh installations also need existing Supabase initialization/migrations.
+3. Server secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN,
+   TELEGRAM_WEBHOOK_SECRET, CRON_SECRET, NEWS_INGEST_SECRET. Set BOT_MODE=news.
+   OpenRouter credentials in .env.example belong only to the preserved BaZi code.
+4. Configure the existing Bot webhook and refresh /api/telegram/set-commands using
+   Authorization: Bearer CRON_SECRET. All endpoints fail closed on missing secrets.
+5. Secure local assistant environment: CHECKCHECK_BASE_URL and NEWS_INGEST_SECRET.
+   Do not paste tokens into chat, commit them or print them. Example config is not credentials.
+6. node scripts/submit-edition.mjs fetches history; append a researched JSON filename to
+   submit it. HTTPS is required. No filename means read-only, never broadcast.
+7. Test the deployed upload/cache and Bot with a staging subscriber before activation.
+   The daily task can generate JSON locally before credentials exist; that is not delivery.
 
-Telegram has no sendMessage idempotency key: a timeout may occur after successful receipt.
-Such deliveries are marked uncertain and never automatically replayed. A process crash
-can leave sending rows; these also require operator review. This chooses protection from
-duplicates over automatic retries of ambiguous sends. /today deliberately permits a user
-to fetch an edition again and is separate from scheduled-send deduplication.
+## Assistant daily workflow
 
-## Setup and run
+Read recent saved editions if securely configured; otherwise use local published edition
+files for history. Research global AI/business, Asian reporting and genuinely interesting
+science/culture. Open reliable source articles, verify dates and key claims across two
+independent publishers; syndicated duplicates do not count. Skip unsupported/hyped/stale
+stories. Save only actual evidence excerpts (respect source copyright limits) with dates and
+URLs. Source.content must contain >=200 characters of factual evidence/excerpt or an explicitly
+labelled evidence summary, not invented article text. No need to send entire copyrighted
+articles. Write with the V5 voice and independently review facts/numbers before submission.
+Use content.ts schemas and limits. Fewer than three or zero stories is valid.
+Save editions/YYYY-MM-DD.json and a readable Markdown version; do not edit sources/.
+Submit only when deployment and secure local credentials exist. If today's edition exists,
+reuse it, never overwrite. Report meaningful failure once; stay quiet on unchanged setup gaps.
+No paid APIs, upgrades or purchases. The task should not promise successful delivery without
+observing the real endpoint and dispatch result. The daily cron remains the sender.
 
-1. Node.js >=20.9; pnpm install --frozen-lockfile.
-2. On an existing Supabase database apply supabase/migrations/20261013_news.sql.
-   On a fresh database first apply supabase/telegram_init.sql and existing migrations.
-   The news tables have RLS and RPC access only for service_role.
-3. Configure server-only secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, CRON_SECRET, OPENROUTER_API_KEY,
-   TAVILY_API_KEY. Set NEWS_MODEL to a currently available OpenRouter model supporting
-   JSON object output. BOT_MODE=news activates V5. NEWS_SOURCE_DOMAINS is optional.
-   SUPABASE_ANON_KEY and OPENROUTER_MODEL are legacy config; the news server does not
-   need the anon key. Never expose the service-role key in NEXT_PUBLIC variables.
-4. Run pnpm test, pnpm typecheck, pnpm build; pnpm dev for local work.
-5. Deploy to the existing Vercel project and register the existing Bot webhook at
-   https://YOUR_HOST/api/telegram/webhook with Telegram setWebhook secret_token equal
-   to TELEGRAM_WEBHOOK_SECRET. Do not drop pending updates without deciding to do so.
-6. Authenticated GET /api/telegram/set-commands updates the English news menu (also
-   replaces old Chinese scoped menu). Header: Authorization: Bearer CRON_SECRET.
-7. Authenticated POST /api/cron/news produces today's Singapore-date edition;
-   authenticated POST /api/cron/daily dispatches that saved edition to due subscribers.
-   Both use Authorization: Bearer CRON_SECRET. Missing secrets fail closed.
-8. Test /start, /today, /settings, /delivery, /timezone, /pause, /resume, /stop,
-   /interests on a test Bot/database before enabling live delivery.
+## Preservation and verification
 
-vercel.json schedules production checks and dispatch every 10 minutes. Scheduled GET
-production starts from 07:30 Singapore; it skips earlier checks and already completed
-editions. The production call normally completes before the default 08:00 send.
-Authenticated POST permits a manual run before that window.
-Daily editions use Singapore dates; recipient delivery slots use their own IANA timezone.
-Failed production retries on the next scheduled check; crashed production retries after
-the claim lease expires. Do not dispatch yesterday's
-edition while today's generation is unavailable. Up to 50 due subscribers are processed per
-invocation, with a time budget; subsequent cron calls drain the remaining queue.
+Origin main and backup-bazi-before-news-2026-10-13 remain at 6daae50; BaZi engines, old
+message generation, UI and tables are retained. BOT_MODE=bazi or unset uses legacy handlers.
+Rollback can refresh legacy commands; existing per-chat menus may need /language English
+in legacy mode to reset their scoped command lists. The backup branch is untouched.
 
-Vercel Hobby restricts cron frequency to daily. This schedule requires a plan supporting
-frequent cron and a function duration of 300 seconds, or an external authenticated
-scheduler. For Hobby, remove Vercel's cron entries and use an external scheduler with the
-same endpoints. Set production timeout >=180 seconds and dispatcher timeout >=300 seconds.
-Local builds and tests do not require any live credentials and never contact real Telegram.
-
-## Operations and rollback
-
-Inspect news_editions.status (generating/ready/empty/failed), news_deliveries.status
-(sending/sent/uncertain) and cron JSON counters. Failed generation can retry immediately;
-crashed generation may retry after 15 minutes. Empty editions advance due schedules without
-sending. A not-ready edition leaves schedules due so the next dispatch can catch up.
-Paused subscriptions resume automatically once paused_until has elapsed; stopped ones stay
-inactive until /start or /resume. Interest strings are limited to 500 characters and never
-used as editor instructions. No birth data is sent to the news model.
-
-For uncertain/stale sending deliveries, inspect the actual Telegram chat and next_part.
-Do not delete delivery claims blindly. If resuming manually, send only confirmed missing
-parts and then mark sent; the last unconfirmed part may already have arrived. There is no
-automatic administrative replay endpoint in V5.
-
-Rollback: set BOT_MODE=bazi, redeploy, restore original daily cron schedule `0 0 * * *`
-if desired, and refresh Bot commands. The old settings/readings/tables still exist.
-Do not modify backup-bazi-before-news-2026-10-13. PAUSED.md is historical and does not prove
-that the live deployment/webhook is paused; verify current hosting state separately.
-
-## Verification limits
-
-Automated tests cover evidence rejection, content format, deduplication, daily dispatch
-claims and checkpoints, ambiguous failures, empty/not-ready editions, interest collection,
-news onboarding and production failure handling. The additive migration was also verified with PGlite PostgreSQL, including repeat
-execution, subscriber transfer, atomic claims, expired-owner fencing, RLS and RPC
-permissions (tests/news-db.cjs; requires @electric-sql/pglite via PGLITE_MODULE).
-Real API credentials, a deployed Supabase
-migration and a live Telegram delivery must be verified in staging before rollout.
-
-API references: https://docs.tavily.com/documentation/api-reference/endpoint/search
-https://openrouter.ai/docs/guides/features/structured-outputs
-https://vercel.com/docs/cron-jobs/usage-and-pricing
-
-The production webpack build completed. The existing /history client page emits a
-`location is not defined` prerender warning; this page is unchanged by V5. The existing
-Next config skips build-time type validation, so the separate typecheck command is required.
+Tests cover source/date checks, rendering, exact repeats, claimed/ambiguous/empty dispatch,
+Bot subscription/interests, BaZi regression, auth and assistant upload. tests/news-db.cjs
+optionally runs PostgreSQL/PGlite migrations, RLS, claim fencing and candidate exclusion.
+Real deployment, credentials and unattended task execution still need end-to-end validation.
+The existing /history page emits a prerender warning; it is unchanged.

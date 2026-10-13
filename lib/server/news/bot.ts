@@ -8,7 +8,7 @@ import { editionDate } from './content'
 import { sendEdition } from './dispatch'
 import { computeNextDeliveryAt, normalizeDeliveryTime } from '../schedule'
 
-const HELP = 'CHECK CHECK\nGlobal AI. Asian Perspective.\nKnow Something. Have Something to Say.\n\n/start — subscribe\n/today — today’s English briefing\n/settings — delivery settings\n/delivery Morning|Afternoon|Evening\n/timezone Asia/Singapore\n/pause 1–30 — pause for days\n/resume — resume daily sends\n/stop — stop daily sends\n/interests — tell me what interests you\n\nInterests are collected for a future Picked for You feature. For now, everyone receives the same curated stories.'
+const HELP = 'CHECK CHECK\nGlobal AI. Asian Perspective.\nKnow Something. Have Something to Say.\n\n/start — subscribe\n/today — today’s English briefing\n/settings — delivery settings\nDaily delivery: 08:00–09:00 Singapore time\nOne shared delivery time for everyone\n/pause 1–30 — pause for days\n/resume — resume daily sends\n/stop — stop daily sends\n/interests — tell me what interests you\n\nInterests are collected for a future Picked for You feature. For now, everyone receives the same curated stories.'
 export async function handleNewsUpdate(update: TelegramUpdate) {
   if (update.callback_query) { await answerCallbackQuery(update.callback_query.id); return { ignored: true, sent: 0 } }
   const message = update.message
@@ -46,7 +46,7 @@ export async function handleNewsUpdate(update: TelegramUpdate) {
       await reply(command === '/start' ? HELP + '\n\nSubscribed to daily English briefings.' : 'Daily sends resumed.')
       return today()
     case '/today': return today()
-    case '/settings': return reply(`Daily sends: ${sub.active ? 'On' : 'Off'}\nDelivery: ${sub.delivery_time}\nTimezone: ${sub.timezone}${sub.paused_until ? `\nPaused until: ${sub.paused_until}` : ''}\nInterests: ${sub.interests || 'Not set'}\n\n/delivery Morning|Afternoon|Evening\n/timezone Asia/Singapore\n/interests\n/pause 3\n/stop`)
+    case '/settings': return reply(`Daily sends: ${sub.active ? 'On' : 'Off'}\nDelivery: 08:00–09:00 Singapore time${sub.paused_until ? `\nPaused until: ${sub.paused_until}` : ''}\nInterests: ${sub.interests || 'Not set'}\n\nDaily delivery: 08:00–09:00 Singapore time\nOne shared delivery time for everyone\n/interests\n/pause 3\n/stop`)
     case '/interests':
       if (args.length) {
         const interests = args.join(' ')
@@ -64,17 +64,8 @@ export async function handleNewsUpdate(update: TelegramUpdate) {
     case '/stop':
       await saveSubscription(profile.id, { active: false, paused_until: null })
       return reply('Daily sends stopped. Use /start to subscribe again.')
-    case '/delivery': {
-      const slot = args[0]
-      if (!['Morning', 'Afternoon', 'Evening'].includes(slot)) return reply('Use /delivery Morning, Afternoon or Evening (08:00, 12:00, 19:00 in your timezone).')
-      await saveSubscription(profile.id, { delivery_time: slot, next_delivery_at: computeNextDeliveryAt(sub.timezone, normalizeDeliveryTime(slot)) })
-      return reply(`Delivery set to ${slot}.`)
-    }
-    case '/timezone': {
-      try { Intl.DateTimeFormat('en', { timeZone: args[0] || 'invalid' }).format() } catch { return reply('Use an IANA timezone. Example: /timezone Asia/Singapore') }
-      await saveSubscription(profile.id, { timezone: args[0], next_delivery_at: computeNextDeliveryAt(args[0], normalizeDeliveryTime(sub.delivery_time)) })
-      return reply(`Timezone set to ${args[0]}.`)
-    }
+    case '/delivery':
+    case '/timezone': return reply('Everyone receives one daily edition in the same 08:00–09:00 Singapore delivery window. Individual delivery times are not enabled.')
     default: return reply(HELP)
   }
 }
