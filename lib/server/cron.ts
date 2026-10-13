@@ -1,3 +1,5 @@
+import { newsMode } from './news/config'
+import { dispatchNews } from './news/dispatch'
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import { normalizeAppLanguage } from '@/lib/i18n'
 import { getOrCreateTodayMessage, sendDailyCheckCheck } from './telegram-bot'
@@ -6,6 +8,7 @@ import { computeNextDeliveryAt, normalizeDeliveryTime, normalizeTimeZone } from 
 import { setBotCommands } from './telegram-client'
 
 export async function runDailyDispatch(limit = 200) {
+  if (newsMode()) return dispatchNews()
   await setBotCommands().catch((err) => console.error('setBotCommands failed:', err))
   const nowIso = new Date().toISOString()
   const dueProfiles = await listDueProfiles(nowIso, limit)

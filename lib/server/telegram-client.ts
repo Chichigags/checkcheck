@@ -1,3 +1,4 @@
+import { newsMode } from './news/config'
 import 'server-only'
 
 function getTelegramToken(): string {
@@ -17,6 +18,7 @@ async function telegramRequest<T>(method: string, payload: Record<string, unknow
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
   })
 
   const json = (await response.json()) as { ok: boolean; result?: T; description?: string }
@@ -45,6 +47,16 @@ export async function answerCallbackQuery(callbackQueryId: string): Promise<void
     callback_query_id: callbackQueryId,
   })
 }
+
+const NEWS_COMMANDS = [
+  { command: 'start', description: 'Subscribe to Check Check' },
+  { command: 'today', description: 'Get today’s English briefing' },
+  { command: 'settings', description: 'Delivery settings' },
+  { command: 'interests', description: 'Tell me what interests you' },
+  { command: 'pause', description: 'Pause daily sends (1–30 days)' },
+  { command: 'resume', description: 'Resume daily sends' },
+  { command: 'stop', description: 'Stop daily sends' },
+]
 
 const EN_COMMANDS = [
   { command: 'today', description: "Get today's CheckCheck" },
@@ -79,12 +91,12 @@ async function replaceCommands(
 }
 
 export async function setBotCommands(): Promise<void> {
-  await replaceCommands(EN_COMMANDS)
-  await replaceCommands(ZH_COMMANDS, 'zh')
+  await replaceCommands(newsMode() ? NEWS_COMMANDS : EN_COMMANDS)
+  await replaceCommands(newsMode() ? NEWS_COMMANDS : ZH_COMMANDS, 'zh')
 }
 
 export async function setBotCommandsForChat(chatId: number, language: string): Promise<void> {
-  const commands = language === '中文' ? ZH_COMMANDS : EN_COMMANDS
+  const commands = newsMode() ? NEWS_COMMANDS : language === '中文' ? ZH_COMMANDS : EN_COMMANDS
   await telegramRequest('setMyCommands', {
     commands,
     scope: { type: 'chat', chat_id: chatId },
@@ -122,6 +134,7 @@ export async function sendTelegramPhoto(chatId: number, imageBuffer: Buffer, cap
     headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
     body,
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
   })
 
   const json = (await response.json()) as { ok: boolean; description?: string }

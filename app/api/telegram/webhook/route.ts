@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 
 function isAuthorized(request: NextRequest): boolean {
   const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET
-  if (!expectedSecret) return true
+  if (!expectedSecret) return false
   const provided = request.headers.get('x-telegram-bot-api-secret-token')
   return provided === expectedSecret
 }

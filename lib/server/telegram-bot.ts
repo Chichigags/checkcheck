@@ -1,3 +1,5 @@
+import { newsMode } from './news/config'
+import { handleNewsUpdate } from './news/bot'
 import { calculateChart, formatCosmicId, getProfile } from '@/lib/bazi'
 import type { DailyMessage } from '@/lib/generate-mock-message'
 import {
@@ -724,6 +726,7 @@ async function handleCommand(
 }
 
 export async function handleTelegramUpdate(update: TelegramUpdate): Promise<{ ignored?: boolean; duplicate?: boolean; sent: number }> {
+  if (newsMode()) return handleNewsUpdate(update)
   void ensureGlobalMenu()
   if (update.callback_query) {
     const cq = update.callback_query
